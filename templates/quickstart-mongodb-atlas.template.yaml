@@ -22,7 +22,7 @@ Resources:
       OrgId: !Ref "OrgId"
       BackupRetentionPeriod: 0
       Plan: 
-        version: 2 
+        version: 4 
         project:
           name: !Sub "${AWS::StackName}"
         cluster:
@@ -83,4 +83,7 @@ Outputs:
     Value: !Ref AtlasDatabaseUser
   SrvHost:
     Description: "Hostname for mongodb+srv:// connection string"
-    Value: !GetAtt "AtlasDatabaseUser.SrvHost"
+    Value: !GetAtt "AtlasDeployment.SrvHost"
+    Export:
+      Name: !Join [ "-", [ !Ref "AWS::StackName","standardSrv" ] ]
+

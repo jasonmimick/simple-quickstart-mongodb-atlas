@@ -56,18 +56,28 @@ aws cloudformation create-stack \
                ParameterKey=PrivateKey,ParameterValue=${ATLAS_PRIVATE_KEY} \
                ParameterKey=OrgId,ParameterValue=${ATLAS_ORG_ID} \
                ParameterKey=DBUserArn,ParameterValue=${AWS_USER_ARN} \
-  --stack-name mongodbatlas-quickstart
+  --stack-name mongodb-atlas-quickstart
 ```
 
 # Connect to your database
 
 After the cluster provisions, you can connect with the `mongo` shell or MongoDB Compass.
 
+**TODO** *Right now - need to trigger and update-stack to force refresh of
+the stack output/export. Is there a better way for this?*
 
-**TODO** Get `SRVHOST_DB` output into the Stack output.
+Fetch the new cluster `mongodb+srv://` host info:
 
 ```bash
-mongo "${SRVHOST_DB}?authSource=%24external&authMechanism=MONGODB-AWS" \
+MDB=$(aws cloudformation list-exports | \
+ jq '.Exports[] | select(.Name=="mongodb-atlas-quickstart-standardSrv") | .Value')
+echo "mongodb-atlas-quickstart database url: ${MDB}"
+```
+
+Use this url along with your `aws` cli credentials to seamlessly and securly connect to your new MongoDB Atlas database:
+
+```bash
+mongo "${MDB}/mongodb-atlas-quickstart?authSource=%24external&authMechanism=MONGODB-AWS" \
     --username $(aws sts get-session-token --output text --query 'Credentials.AccessKeyId') \
     --password $(aws sts get-session-token --output text --query 'Credentials.SecretAccessKey') \
     --awsIamSessionToken $(aws sts get-session-token --output text --query 'Credentials.SessionToken')
