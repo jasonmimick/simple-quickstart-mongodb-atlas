@@ -6,7 +6,7 @@ import cfnresponse
 from time import sleep
 
 log = logging.getLogger()
-log.setLevel(logging.DEBUG)
+#log.setLevel(logging.DEBUG)
 _l=log.info
 _lw=log.warn
 DS=20
@@ -78,32 +78,35 @@ def create(evt):
 def update(evt):
     _l(f"update:evt:{evt}")
     prj=_api(evt,f"{MDBg}/{_p(evt)}")
-    r={RD:{"project":prj},PRI:evt[PRI]}
+    r={PRI:evt[PRI]}
+    r[RD]={}
     i=prj['id']
     if int(prj['clusterCount'])>0:
         c=_api(evt, f"{MDBg}/{i}/clusters/{evt[RP]['Name']}")
-        r[RD]["SrvHost"]=c[CS].get('standardSrv',c['stateName'])
-        r[RD]["cluster"]=c
+        v=c.get('srvAddress',c.get('stateName'))
+        _l("v={v}")
+        r[RD]["SrvHost"]=v
+        #r[RD]["cluster"]=c
     e = _api(evt,f"{MDBg}/{i}/cloudProviderAccess")
-    for k in e['awsIamRoles']:
+    for k in e['awsIamRoles'][0]:
         r[RD][f"cloudProviderAccess-{k}"] = e['awsIamRoles'][0][k]
     return r
 def delete(evt):
-    pid=_p(evt)
     name=evt[RP]["Name"]
     try:
-      prj=_api(evt,f"{MDBg}/{pid}")
+      prj=_api(evt,f"{MDBg}/{_p(evt)}")
     except Exception as exp:
-      _l(f"got {exp} tring /byName")
-      prj=_api(evt, f"{MDBg}/byName/{evt[RP]['Name']}")
+      _l(f"got {exp} try /byName")
+      prj=_api(evt, f"{MDBg}/byName/{name}")
+    i=prj['id']
     if int(prj['clusterCount'])>0:
-        cd=_api(evt, f"{MDBg}/{pid}/clusters/{name}", m="DELETE")
+        cd=_api(evt, f"{MDBg}/{i}/clusters/{name}", m="DELETE")
         _lw(f"deleted cluster, sleeping {DS}")
         try:
             sleep(DS)
         except Exception as e:
             _lw(f"exp sleeping:{e}")
-    r=_api(evt, f"{MDBg}/{prj['id']}", m="DELETE")
+    r=_api(evt, f"{MDBg}/{i}", m="DELETE")
     return {RD:r,PRI:evt[PRI]}
 fns={'Create':create,'Update':update,'Delete':delete}
 def lambda_handler(evt, ctx):
