@@ -1,0 +1,25 @@
+project:
+  name: quickstart-mongodb-atlas
+  owner: quickstart-eng@mongodb.com
+  regions:
+  - us-east-1
+  template: templates/quickstart-mongodb-atlas.template.yaml
+  parameters:
+    RemoteAccessCIDR: 10.0.0.0/16
+    QSS3BucketName: $[taskcat_autobucket]
+    QSS3BucketRegion: $[taskcat_current_region]
+  lambda_source_path: functions/source
+  # What should I put here?
+  lambda_zip_path: templates/mongodbatlas-resource-manager.template.yaml  
+tests:
+  defaults:
+    parameters:
+      AvailabilityZones: $[taskcat_genaz_3]
+  quickstart-test:
+    parameters:
+      PublicKey: atlas-public-api-key
+      PrivateKey: atlas-private-api-key
+      OrgId: atlas-org-id
+      DBUserArn: "aws sts get-caller-identity" 
+    regions:
+      - us-east-1

@@ -78,12 +78,16 @@ def create(evt):
 def update(evt):
     _l(f"update:evt:{evt}")
     prj=_api(evt,f"{MDBg}/{_p(evt)}")
-    resp={RD:{"project":prj},PRI:evt[PRI]}
+    r={RD:{"project":prj},PRI:evt[PRI]}
+    i=prj['id']
     if int(prj['clusterCount'])>0:
-        c=_api(evt, f"{MDBg}/{prj['id']}/clusters/{evt[RP]['Name']}")['results'][0]
-        resp[RD]["SrvHost"]=c[CS].get('standardSrv',c['stateName'])
-        resp[RD]["cluster"]=c
-    return resp
+        c=_api(evt, f"{MDBg}/{i}/clusters/{evt[RP]['Name']}")
+        r[RD]["SrvHost"]=c[CS].get('standardSrv',c['stateName'])
+        r[RD]["cluster"]=c
+    e = _api(evt,f"{MDBg}/{i}/cloudProviderAccess")
+    for k in e['awsIamRoles']:
+        r[RD][f"cloudProviderAccess-{k}"] = e['awsIamRoles'][0][k]
+    return r
 def delete(evt):
     pid=_p(evt)
     name=evt[RP]["Name"]

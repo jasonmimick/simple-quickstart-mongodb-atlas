@@ -22,7 +22,7 @@ Resources:
       OrgId: !Ref "OrgId"
       BackupRetentionPeriod: 0
       Plan: 
-        version: "foo.2"
+        version: 1
         project:
           name: !Sub "${AWS::StackName}"
         cluster:
