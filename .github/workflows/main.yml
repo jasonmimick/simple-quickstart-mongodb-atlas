@@ -1,0 +1,65 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the main branch
+on:
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - name: Configure AWS credentials from Test account
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      # Runs a set of commands using the runners shell
+      - name: Generate new template
+        run: |
+          echo "Should checkin the generated temaplte"
+      - name: Deploy the MongoDB Cloud Resource Manager lambda
+        run: |
+          ls -l /github/workspace
+          echo "Deploying the MongoDB Cloud Resource Manager Custom lambda function"
+          /github/workspace/scripts/deploy-resourcemanager-lambda.sh
+  create-stack:
+      runs-on: ubuntu-latest
+      env:
+        ATLAS_PUBLIC_KEY: ${{ secrets.ATLAS_PUBLIC_KEY }}
+        ATLAS_PRIVATE_KEY: ${{ secrets.ATLAS_PRIVATE_KEY }}
+        ATLAS_ORG_ID: ${{ secrets.ATLAS_ORG_ID }}
+      steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Configure AWS credentials from Test account
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Create the MongoDB Cloud Deployment
+        run: |
+          cd /github/workspace
+          STACK_NAME="${GITHUB_REPOSITORY}-${GITHUB_RUN_ID}"
+          AWS_USER_ARN=$(aws sts get-caller-identity --output text --query 'Arn')
+          echo "Attempt to create-stack: ${STACK_NAME}"
+          echo "AWS_USER_ARN=${AWS_USER_ARN}"
+          aws cloudformation create-stack --capabilities CAPABILITY_IAM \
+          --template-body file://templates/quickstart-mongodb-atlas.template.yaml \
+          --parameters ParameterKey=PublicKey,ParameterValue=$ATLAS_PUBLIC_KEY \
+                       ParameterKey=PrivateKey,ParameterValue=$ATLAS_PRIVATE_KEY \
+                       ParameterKey=OrgId,ParameterValue=$ATLAS_ORG_ID \
+                       ParameterKey=DBUserArn,ParameterValue=$AWS_USER_ARN \
+                       --stack-name "${STACK_NAME}" 

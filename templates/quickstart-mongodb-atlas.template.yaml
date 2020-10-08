@@ -1,0 +1,86 @@
+Parameters:
+  PublicKey:
+    Description: "Your MongoDB Cloud Public API Key"
+    Type: String 
+  PrivateKey:
+    Description: "Your MongoDB Cloud Private API Key"
+    Type: String 
+  OrgId:
+    Description: "Your MongoDB Cloud Organization Id"
+    Type: String 
+  DBUserArn:
+    Description: "AWS IAM user ARN for database connection"
+    Type: String
+Resources:
+  AtlasDeployment:
+    Type: Custom::AtlasDeployment
+    Properties:
+      ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager"
+      Name: !Sub "${AWS::StackName}"
+      PublicKey: !Ref "PublicKey"
+      PrivateKey: !Ref "PrivateKey"
+      OrgId: !Ref "OrgId"
+      BackupRetentionPeriod: 0
+      Plan: 
+        version: "foo.2"
+        project:
+          name: !Sub "${AWS::StackName}"
+        cluster:
+          name: !Sub "${AWS::StackName}"
+          mongoDBMajorVersion: "4.4"
+          providerSettings:
+            providerName: "AWS"
+            instanceSizeName: "M10" 
+            regionName: "US_EAST_1"
+  AtlasIAMRole:
+    Type: AWS::IAM::Role
+    DependsOn: AtlasDeployment
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt "AtlasDeployment.cloudProviderAccess-atlasAWSAccountArn"
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                sts:ExternalId: !GetAtt "AtlasDeployment.cloudProviderAccess-atlasAssumedRoleExternalId"
+      Policies:
+      - PolicyName: DoINeedThisPolicy
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action: '*'
+            Resource: '*'
+  AtlasDatabaseUser:
+    Type: Custom::AtlasDatabaseUser
+    DependsOn: AtlasIAMRole
+    Properties:
+      ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager"
+      Name: !Sub "${AWS::StackName}"
+      PublicKey: !Ref "PublicKey"
+      PrivateKey: !Ref "PrivateKey"
+      OrgId: !Ref "OrgId"
+      BackupRetentionPeriod: 0
+      Plan: 
+        project:
+          id: !Ref "AtlasDeployment"
+        databaseUsers:
+        - username: !Ref "DBUserArn"
+          databaseName: "$external"
+          awsIAMType: "USER"
+          roles:
+          - roleName: "readWrite"
+            databaseName: !Sub "${AWS::StackName}"
+Outputs:
+  AtlasDeployment:
+    Description: "Info on your Atlas deployment"
+    Value: !Ref AtlasDeployment
+  AtlasDatabaseUser:
+    Description: "AWS IAM ARN for database user"
+    Value: !Ref AtlasDatabaseUser
+  SrvHost:
+    Description: "Hostname for mongodb+srv:// connection string"
+    Value: !GetAtt "AtlasDatabaseUser.SrvHost"

@@ -1,0 +1,41 @@
+Resources:
+  MongoDBAtlasDeployment:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: 
+      FunctionName: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager'
+      Handler: "index.lambda_handler"
+      Timeout: 30
+      Role: !GetAtt 'LambdaRole.Arn'
+      Runtime: python3.6
+  # The LambdaRole is very simple for this use case, because it only need to have access to write logs
+  # If the lambda is going to access AWS services using boto3, this role must be
+  # extended to give lambda the appropriate permissions.
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: "lambda-logs"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - "arn:aws:logs:*:*:*"
+
