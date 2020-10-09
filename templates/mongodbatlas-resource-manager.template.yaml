@@ -80,6 +80,7 @@ Resources:
                   c=p['Plan']['cluster']
                   cr=_api(evt, f"{MDBg}/{pid}/clusters",m="POST", d=c)
                   resp["cluster"]=cr
+                  resp["SrvHost"]=cr['stateName']
               return {RD:resp,PRI:prid}
           def update(evt):
               _l(f"update:evt:{evt}")
