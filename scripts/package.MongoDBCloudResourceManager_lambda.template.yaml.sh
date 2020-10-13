@@ -8,8 +8,6 @@
 # in your own AWS region, see the commands in the `deploy.*` script
 # found in this folder.
 
-STACK_NAME="${1:-MongoDBAtlasResourceManager}"
-echo "STACK_NAME:${STACK_NAME}"
 ROOT="$(git rev-parse --show-toplevel)"
 echo "ROOT:${ROOT}"
 TARGET="${ROOT}/templates/mongodbatlas-resource-manager.template.yaml"

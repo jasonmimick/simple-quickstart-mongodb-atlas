@@ -8,9 +8,6 @@ Parameters:
   OrgId:
     Description: "Your MongoDB Cloud Organization Id"
     Type: String 
-  DBUserArn:
-    Description: "AWS IAM user ARN for database connection"
-    Type: String
 Resources:
   AtlasDeployment:
     Type: Custom::AtlasDeployment
@@ -22,7 +19,7 @@ Resources:
       OrgId: !Ref "OrgId"
       BackupRetentionPeriod: 0
       Plan: 
-        version: 4 
+        version: 5 
         project:
           name: !Sub "${AWS::StackName}"
         cluster:
@@ -68,9 +65,9 @@ Resources:
         project:
           id: !Ref "AtlasDeployment"
         databaseUsers:
-        - username: !Ref "DBUserArn"
+        - username: !GetAtt "AtlasIAMRole.Arn"
           databaseName: "$external"
-          awsIAMType: "USER"
+          awsIAMType: "ROLE"
           roles:
           - roleName: "readWrite"
             databaseName: !Sub "${AWS::StackName}"

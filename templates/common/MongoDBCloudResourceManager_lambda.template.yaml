@@ -6,7 +6,7 @@ Resources:
         ZipFile: 
       FunctionName: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager'
       Handler: "index.lambda_handler"
-      Timeout: 30
+      Timeout: 700
       Role: !GetAtt 'LambdaRole.Arn'
       Runtime: python3.6
   # The LambdaRole is very simple for this use case, because it only need to have access to write logs

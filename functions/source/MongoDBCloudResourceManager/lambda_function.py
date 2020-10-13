@@ -6,7 +6,7 @@ import cfnresponse
 from time import sleep
 
 log = logging.getLogger()
-#log.setLevel(logging.DEBUG)
+log.setLevel(logging.DEBUG)
 _l=log.info
 _lw=log.warn
 DS=20
@@ -57,6 +57,12 @@ def create(evt):
         ecpa = _api(evt,f"{MDBg}/{pid}/cloudProviderAccess",m="POST",d={"providerName":"AWS"})
         for k in ecpa:
           resp[f"cloudProviderAccess-{k}"] = ecpa[k]
+        if "cluster" in p['Plan']:
+            c=p['Plan']['cluster']
+            ce=f"{MDBg}/{pid}/clusters"
+            cr=_api(evt, ce,m="POST", d=c)
+            resp["cluster"]=cr
+            resp["SrvHost"]=w4c(evt,ce,5)
     if rt==RT_DBU:
       _d = []
       for dbu in p['Plan'].get('databaseUsers'):
@@ -65,17 +71,16 @@ def create(evt):
         dbr = _api(evt, f"{MDBg}/{pid}/databaseUsers",m="POST", d=dbu)
         _d.append(dbr)
       resp["databaseUsers"] = _d
-      if pR['clusterCount']>0:
-        cR=_api(evt,f"{MDBg}/{pid}/clusters")
-        resp["SrvHost"]=st=cR['results'][0]['stateName']
-        if CS in cR['results'][0]:
-          resp["SrvHost"]=cR['results'][0][CS].get('standardSrv',st)
-    if "cluster" in p['Plan']:
-        c=p['Plan']['cluster']
-        cr=_api(evt, f"{MDBg}/{pid}/clusters",m="POST", d=c)
-        resp["cluster"]=cr
-        resp["SrvHost"]=cr['stateName']
     return {RD:resp,PRI:prid}
+def w4c(evt,ep,m=1):
+    _l(f"sleeping {m} minutes waiting for cluster")
+    sleep(m*60)
+    c=_api(evt,ep)['results'][0]
+    if c.get('stateName')=="IDLE":
+        return c.get('srvAddress')
+    else:
+        _l(f"Not ready {c} sleeping 1 minute.")
+        return w4c(evt,ep,1)
 def update(evt):
     _l(f"update:evt:{evt}")
     prj=_api(evt,f"{MDBg}/{_p(evt)}")
@@ -87,7 +92,6 @@ def update(evt):
         v=c.get('srvAddress',c.get('stateName'))
         _l("v={v}")
         r[RD]["SrvHost"]=v
-        #r[RD]["cluster"]=c
     e = _api(evt,f"{MDBg}/{i}/cloudProviderAccess")
     for k in e['awsIamRoles'][0]:
         r[RD][f"cloudProviderAccess-{k}"] = e['awsIamRoles'][0][k]

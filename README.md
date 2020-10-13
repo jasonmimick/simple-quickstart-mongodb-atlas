@@ -74,10 +74,15 @@ MDB=$(aws cloudformation list-exports | \
 echo "mongodb-atlas-quickstart database url: ${MDB}"
 ```
 
+```bash
+MDB=$(aws cloudformation list-exports | \
+ jq '.Exports[] | select(.Name=="${STACK_NAME}-standardSrv") | .Value')
+echo "New ${STACK_NAME} database url: ${MDB}"
+```
 Use this url along with your `aws` cli credentials to seamlessly and securly connect to your new MongoDB Atlas database:
 
 ```bash
-mongo "${MDB}/mongodb-atlas-quickstart?authSource=%24external&authMechanism=MONGODB-AWS" \
+mongo "${MDB}/${STACK_NAME}?authSource=%24external&authMechanism=MONGODB-AWS" \
     --username $(aws sts get-session-token --output text --query 'Credentials.AccessKeyId') \
     --password $(aws sts get-session-token --output text --query 'Credentials.SecretAccessKey') \
     --awsIamSessionToken $(aws sts get-session-token --output text --query 'Credentials.SessionToken')
