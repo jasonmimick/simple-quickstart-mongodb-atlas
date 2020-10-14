@@ -27,7 +27,7 @@ jobs:
       # Runs a set of commands using the runners shell
       - name: Generate new template
         run: |
-          echo "Should checkin the generated temaplte"
+          echo "Should 'checking in' also run the packager?"
       - name: Deploy the MongoDB Cloud Resource Manager lambda
         run: |
           ls -l /github/workspace
