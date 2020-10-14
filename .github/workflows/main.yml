@@ -53,13 +53,10 @@ jobs:
         run: |
           cd /github/workspace
           STACK_NAME="${GITHUB_REPOSITORY}-${GITHUB_RUN_ID}"
-          AWS_USER_ARN=$(aws sts get-caller-identity --output text --query 'Arn')
           echo "Attempt to create-stack: ${STACK_NAME}"
-          echo "AWS_USER_ARN=${AWS_USER_ARN}"
           aws cloudformation create-stack --capabilities CAPABILITY_IAM \
           --template-body file://templates/quickstart-mongodb-atlas.template.yaml \
           --parameters ParameterKey=PublicKey,ParameterValue=$ATLAS_PUBLIC_KEY \
                        ParameterKey=PrivateKey,ParameterValue=$ATLAS_PRIVATE_KEY \
                        ParameterKey=OrgId,ParameterValue=$ATLAS_ORG_ID \
-                       ParameterKey=DBUserArn,ParameterValue=$AWS_USER_ARN \
                        --stack-name "${STACK_NAME}" 
