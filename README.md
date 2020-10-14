@@ -1,10 +1,20 @@
-# Clone
+# quickstart-mongodb-atlas 
 
 ```bash
 git clone
 ```
 
 # Setup AWS & API Keys
+
+```bash
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+unzip /tmp/awscliv2.zip
+sudo /tmp/aws/install
+MONGOCLI_VERSION="1.7.0"
+curl -L "https://github.com/mongodb/mongocli/releases/download/${MONGOCLI_VERSION}/mongocli_${MONGOCLI_VERSION}_linux_x86_64.tar.gz" -o "/tmp/mongocli_${MONGOCLI_VERSION}_linux_x86_64.tar.gz"
+tar xzvf "/tmp/mongocli_${MONGOCLI_VERSION}_linux_x86_64.tar.gz" --directory /tmp
+cp "/tmp/mongocli_${MONGOCLI_VERSION}_linux_x86_64/mongocli" "~/.local/bin"
+~/.local/bin/mongocli --version
 
 ```bash
 aws configure
