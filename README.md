@@ -82,8 +82,12 @@ echo "New ${STACK_NAME} database url: ${MDB}"
 Use this url along with your `aws` cli credentials to seamlessly and securly connect to your new MongoDB Atlas database:
 
 ```bash
+STACK_ROLE=$(aws cloudformation describe-stack-resources --stack-name cookies-99-5x --logical-resource-id AtlasIAMRole)
+ROLE=$(aws iam get-role --role-name $( echo "{$STACK_ROLE}" | jq -r '.StackResources[] | .PhysicalResourceId'))
+ROLE_ARN=$(echo "${ROLE}" | jq -r '.Role.Arn')
+ROLE_CREDS=$(aws sts assume-role --role-session-name test --role-arn ${ROLE_ARN})
 mongo "${MDB}/${STACK_NAME}?authSource=%24external&authMechanism=MONGODB-AWS" \
-    --username $(aws sts get-session-token --output text --query 'Credentials.AccessKeyId') \
-    --password $(aws sts get-session-token --output text --query 'Credentials.SecretAccessKey') \
-    --awsIamSessionToken $(aws sts get-session-token --output text --query 'Credentials.SessionToken')
+    --username $(echo "${ROLE_CRED}" | jq -r '.Credentials.AccessKeyId') \
+    --password $(echo "${ROLE_CRED}" | jq -r '.Credentials.SecretAccessKey') \
+    --awsIamSessionToken $(echo "${ROLE_CRED}" | jq -r '.Credentials.SessionToken')
 ```

@@ -38,19 +38,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !GetAtt "AtlasDeployment.cloudProviderAccess-atlasAWSAccountArn"
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
             Action: 'sts:AssumeRole'
-            Condition:
-              StringEquals:
-                sts:ExternalId: !GetAtt "AtlasDeployment.cloudProviderAccess-atlasAssumedRoleExternalId"
-      Policies:
-      - PolicyName: DoINeedThisPolicy
-        PolicyDocument:
-          Version: 2012-10-17
-          Statement:
-          - Effect: Allow
-            Action: '*'
-            Resource: '*'
   AtlasDatabaseUser:
     Type: Custom::AtlasDatabaseUser
     DependsOn: AtlasIAMRole
