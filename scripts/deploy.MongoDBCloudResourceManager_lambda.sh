@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-
-
-echo "which aws=$(which aws)"
-aws help
-
 # Deploys a CloudFormation stack running the MongoDB Cloud Resource Manager
 STACK_NAME="${1:-mongodb-cloud-resource-manager}"
 echo "STACK_NAME=${STACK_NAME}"

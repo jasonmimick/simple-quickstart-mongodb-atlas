@@ -68,7 +68,7 @@ jobs:
       run: |
         cd /github/workspace
         TAG=$(mktemp | cut -d'.' -f2)
-        STACK_NAME="$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f2)-${TAG}"
+        STACK_NAME="aws-quickstart-${TAG}"
         echo "Attempt to create-stack: ${STACK_NAME}"
         aws cloudformation create-stack --capabilities CAPABILITY_IAM \
         --template-body file://templates/quickstart-mongodb-atlas.template.yaml \

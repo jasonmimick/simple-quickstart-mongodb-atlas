@@ -9,8 +9,19 @@ Parameters:
     Description: "Your MongoDB Cloud Organization Id"
     Type: String 
 Resources:
+  AtlasIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+          Action: 'sts:AssumeRole'
   AtlasDeployment:
     Type: Custom::AtlasDeployment
+    DependsOn: AtlasIAMRole
     Properties:
       ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager"
       Name: !Sub "${AWS::StackName}"
@@ -29,30 +40,13 @@ Resources:
             providerName: "AWS"
             instanceSizeName: "M10" 
             regionName: "US_EAST_1"
-  AtlasIAMRole:
-    Type: AWS::IAM::Role
-    DependsOn: AtlasDeployment
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
-            Action: 'sts:AssumeRole'
-  AtlasDatabaseUser:
-    Type: Custom::AtlasDatabaseUser
-    DependsOn: AtlasIAMRole
-    Properties:
-      ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager"
-      Name: !Sub "${AWS::StackName}"
-      PublicKey: !Ref "PublicKey"
-      PrivateKey: !Ref "PrivateKey"
-      OrgId: !Ref "OrgId"
-      BackupRetentionPeriod: 0
-      Plan: 
-        project:
-          id: !Ref "AtlasDeployment"
+        accessList:
+        - ipAddress: "192.0.2.15"
+          comment: "IP address for Application Server A"
+        - cidrBlock: "203.0.113.0/24"
+          comment: "CIDR block for Application Server B - D"
+        - awsSecurityGroup: "sg-0026348ec11780bd1"
+          comment: "Access Listed AWS Security Group"
         databaseUsers:
         - username: !GetAtt "AtlasIAMRole.Arn"
           databaseName: "$external"
@@ -64,9 +58,6 @@ Outputs:
   AtlasDeployment:
     Description: "Info on your Atlas deployment"
     Value: !Ref AtlasDeployment
-  AtlasDatabaseUser:
-    Description: "AWS IAM ARN for database user"
-    Value: !Ref AtlasDatabaseUser
   SrvHost:
     Description: "Hostname for mongodb+srv:// connection string"
     Value: !GetAtt "AtlasDeployment.SrvHost"

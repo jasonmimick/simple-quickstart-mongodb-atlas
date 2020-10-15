@@ -21,19 +21,31 @@ echo "Can we fit captain?  '${LAMBDA_SRC}' character count: ${CHAR_COUNT}, max 4
 if (( "$CHAR_COUNT" >= "4096" ))
 then
   echo "WARNING - Won't fit!"
-  exit 1
+  #exit 1
 else
   echo "Smooth sailing sir!"
 fi
 
-# yq command to insert the code into cfn stack template to deploy
-# keeping it simple....
-echo "Generating target--->${TARGET}"
-yq w "${LAMBDA_STACK_TEMPLATE}" \
-    'Resources.MongoDBAtlasDeployment.Properties.Code.ZipFile' -- "$(< ${LAMBDA_SRC})" \
-    > "${TARGET}"
 
-ls -lah $(dirname ${TARGET})
+# Zip up the lambda source
+LAMBDA_ZIP="$(pwd)/functions/packages/MongoDBCloudResourceManager.zip"
+rm "${LAMBDA_ZIP}"
+ls -lR functions/packages
+cd functions/source/MongoDBCloudResourceManager/package
+zip -r9 "${LAMBDA_ZIP}" .
+cd -;
+
+cd functions/source/MongoDBCloudResourceManager
+zip -g "${LAMBDA_ZIP}" lambda_function.py
+cd -;
+
+ls -lR functions/packages
+aws s3api put-object \
+    --bucket simple-quickstart-mongodb-atlas \
+    --key lambdas/MongoDBCloudResourceManager.zip \
+    --body functions/packages/MongoDBCloudResourceManager.zip
+
+
 
 # Future.
 # When the lambda source crosses the 4096 barrier, enhance this packaging

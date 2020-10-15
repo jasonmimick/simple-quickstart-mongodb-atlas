@@ -1,7 +1,5 @@
 import logging
 import sys
-from botocore.vendored import requests
-from botocore.vendored.requests.auth import HTTPDigestAuth
 import cfnresponse
 from time import sleep
 
@@ -53,33 +51,31 @@ def create(evt):
     pid=pR['id']
     prid = f"org:{pR['orgId']},project:{pid}"
     resp[PRI] = prid
-    if rt==RT_DPL:
-        ecpa = _api(evt,f"{MDBg}/{pid}/cloudProviderAccess",m="POST",d={"providerName":"AWS"})
-        for k in ecpa:
-          resp[f"cloudProviderAccess-{k}"] = ecpa[k]
-        if "cluster" in p['Plan']:
-            c=p['Plan']['cluster']
-            ce=f"{MDBg}/{pid}/clusters"
-            cr=_api(evt, ce,m="POST", d=c)
-            resp["cluster"]=cr
-            resp["SrvHost"]=w4c(evt,ce,5)
-    if rt==RT_DBU:
-      _d = []
-      for dbu in p['Plan'].get('databaseUsers'):
-        _l(f"dbu: {dbu}")
-        dbu['groupId']=pid
-        dbr = _api(evt, f"{MDBg}/{pid}/databaseUsers",m="POST", d=dbu)
-        _d.append(dbr)
-      resp["databaseUsers"] = _d
+    _d = []
+    for dbu in p['Plan'].get('databaseUsers'):
+      dbu['groupId']=pid
+      dbr = _api(evt, f"{MDBg}/{pid}/databaseUsers",m="POST", d=dbu)
+      _d.append(dbr)
+    resp["databaseUsers"] = _d
+    if "cluster" in p['Plan']:
+      c=p['Plan']['cluster']
+      ce=f"{MDBg}/{pid}/clusters"
+      cr=_api(evt, ce,m="POST", d=c)
+      resp["cluster"]=cr
+      resp["SrvHost"]=w4c(evt,ce,5)
+    ecpa = _api(evt,f"{MDBg}/{pid}/cloudProviderAccess",m="POST",d={"providerName":"AWS"})
+    for k in ecpa:
+      resp[f"cloudProviderAccess-{k}"] = ecpa[k]
+    if 'accessList' in p['Plan']:
+      resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['Plan']['accessList'])
     return {RD:resp,PRI:prid}
 def w4c(evt,ep,m=1):
-    _l(f"sleeping {m} minutes waiting for cluster")
+    _l(f"{m}min wait cluster")
     sleep(m*60)
     c=_api(evt,ep)['results'][0]
     if c.get('stateName')=="IDLE":
         return c.get('srvAddress')
     else:
-        _l(f"Not ready {c} sleeping 1 minute.")
         return w4c(evt,ep,1)
 def update(evt):
     _l(f"update:evt:{evt}")
@@ -89,12 +85,12 @@ def update(evt):
     i=prj['id']
     if int(prj['clusterCount'])>0:
         c=_api(evt, f"{MDBg}/{i}/clusters/{evt[RP]['Name']}")
-        v=c.get('srvAddress',c.get('stateName'))
-        _l("v={v}")
-        r[RD]["SrvHost"]=v
+        r[RD]["SrvHost"]=c.get('srvAddress',c.get('stateName'))
     e = _api(evt,f"{MDBg}/{i}/cloudProviderAccess")
     for k in e['awsIamRoles'][0]:
         r[RD][f"cloudProviderAccess-{k}"] = e['awsIamRoles'][0][k]
+    if 'accessList' in p['Plan']:
+        resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['Plan']['accessList'])
     return r
 def delete(evt):
     name=evt[RP]["Name"]
