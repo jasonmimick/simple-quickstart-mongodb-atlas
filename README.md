@@ -1,9 +1,8 @@
 # quickstart-mongodb-atlas 
 
-```bash
-git clone
-```
+![Quick Start architecture for MongoDB Atlas on AWS](docs/images/atlas-aws-privatelink.svg)
 
+# How to run this
 ## Setup AWS & API Keys
 
 If needed, install the awscli and mongocli.
@@ -108,14 +107,15 @@ Fetch the new cluster `mongodb+srv://` host info:
 
 ```bash
 STACK_NAME="mongodb-atlas-quickstart"
-MDB=$(aws cloudformation list-exports | \
- jq '.Exports[] | select(.Name=="${STACK_NAME}-standardSrv") | .Value')
+MDB=$(aws cloudformation list-exports |\
+ jq -r --arg stackname "${STACK_NAME}" \
+ '.Exports[] | select(.Name==$stackname+"-standardSrv") | .Value')
 echo "New ${STACK_NAME} database url: ${MDB}"
 ```
 Use this url along with your `aws` cli credentials to seamlessly and securly connect to your new MongoDB Atlas database:
 
 ```bash
-STACK_ROLE=$(aws cloudformation describe-stack-resources --stack-name "${STACK_ROLE}" --logical-resource-id AtlasIAMRole)
+STACK_ROLE=$(aws cloudformation describe-stack-resources --stack-name "${STACK_NAME}" --logical-resource-id AtlasIAMRole)
 ROLE=$(aws iam get-role --role-name $( echo "${STACK_ROLE}" | jq -r '.StackResources[] | .PhysicalResourceId'))
 ROLE_ARN=$(echo "${ROLE}" | jq -r '.Role.Arn')
 ROLE_CREDS=$(aws sts assume-role --role-session-name test --role-arn ${ROLE_ARN})

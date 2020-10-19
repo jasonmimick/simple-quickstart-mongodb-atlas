@@ -1,7 +1,10 @@
 import logging
 import sys
 import cfnresponse
+import requests
+from requests.auth import HTTPDigestAuth
 from time import sleep
+import traceback
 
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
@@ -17,10 +20,18 @@ RT_DPL="Custom::AtlasDeployment"
 RT_DBU="Custom::AtlasDatabaseUser"
 PRID="X"
 CS="connectionStrings"
+OK_DELETE_ERRORCODES= [
+    "GROUP_NOT_FOUND",
+    "NOT_IN_GROUP",
+    "CLUSTER_ALREADY_REQUESTED_DELETION"
+]
+OK_EXCEPTION_STOP=False
+
 def _p(e):
     return e[PRI].split('-')[-1].split(',')[-1].split(':')[-1]
 
-def _api(evt,ep,m="GET",d={}):
+
+def _api(evt,ep,m="GET",d={},eatable=False):
     pub=evt[RP].get('PublicKey','')
     pvt=evt[RP].get('PrivateKey','')
     if (m=="GET"):
@@ -34,8 +45,19 @@ def _api(evt,ep,m="GET",d={}):
     j=r.json()
     _l(f"_api m:{m} json:{j}")
     if "error" in j:
-        raise Exception(f"{j['error']},{j['errorCode']},{j['detail']}")
-    return j
+        if (eatable and (j['errorCode'] in OK_DELETE_ERRORCODES)):
+            _lw(f"OK ERROR DETECTED: Error: {j}")
+            OK_EXCEPTION_STOP=True
+            return j
+        else:
+            OK_EXCEPTION_STOP=False
+            _lw(traceback.print_exc())
+            raise Exception(j)
+    else:
+        OK_EXCEPTION_STOP=False
+        return j
+
+CREATING_PRI=""
 def create(evt):
     _l(f"create:evt:{evt}")
     p = evt[RP]
@@ -47,27 +69,30 @@ def create(evt):
     else:
       pR = _api(evt, f"{MDBg}/byName/{evt[RP]['Name']}")
     resp = {}
-    resp["project"]=pR
     pid=pR['id']
     prid = f"org:{pR['orgId']},project:{pid}"
     resp[PRI] = prid
+    CREATING_PRI=prid
+    # Database Users
     _d = []
     for dbu in p['Plan'].get('databaseUsers'):
       dbu['groupId']=pid
       dbr = _api(evt, f"{MDBg}/{pid}/databaseUsers",m="POST", d=dbu)
       _d.append(dbr)
-    resp["databaseUsers"] = _d
+    # Cloud Provider Access
+    ecpa = _api(evt,f"{MDBg}/{pid}/cloudProviderAccess",m="POST",d={"providerName":"AWS"})
+    for k in ecpa:
+      resp[f"cloudProviderAccess-{k}"] = ecpa[k]
+    # Access List (ip, peering, etc)
+    if 'accessList' in p['Plan']:
+      resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['Plan']['accessList'])
+    # Finally, cluster since it takes time
     if "cluster" in p['Plan']:
       c=p['Plan']['cluster']
       ce=f"{MDBg}/{pid}/clusters"
       cr=_api(evt, ce,m="POST", d=c)
-      resp["cluster"]=cr
       resp["SrvHost"]=w4c(evt,ce,5)
-    ecpa = _api(evt,f"{MDBg}/{pid}/cloudProviderAccess",m="POST",d={"providerName":"AWS"})
-    for k in ecpa:
-      resp[f"cloudProviderAccess-{k}"] = ecpa[k]
-    if 'accessList' in p['Plan']:
-      resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['Plan']['accessList'])
+    resp["project"]=_api(evt,f"{MDBg}/{pid}")
     return {RD:resp,PRI:prid}
 def w4c(evt,ep,m=1):
     _l(f"{m}min wait cluster")
@@ -92,24 +117,35 @@ def update(evt):
     if 'accessList' in p['Plan']:
         resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['Plan']['accessList'])
     return r
+
 def delete(evt):
     name=evt[RP]["Name"]
-    try:
-      prj=_api(evt,f"{MDBg}/{_p(evt)}")
-    except Exception as exp:
-      _l(f"got {exp} try /byName")
-      prj=_api(evt, f"{MDBg}/byName/{name}")
+    prj, cont = _api(evt,f"{MDBg}/{_p(evt)}",eatable=True)
+    if OK_EXCEPTION_STOP:
+      return {RD:prj,PRI:evt[PRI]}
     i=prj['id']
     if int(prj['clusterCount'])>0:
-        cd=_api(evt, f"{MDBg}/{i}/clusters/{name}", m="DELETE")
-        _lw(f"deleted cluster, sleeping {DS}")
-        try:
-            sleep(DS)
-        except Exception as e:
-            _lw(f"exp sleeping:{e}")
-    r=_api(evt, f"{MDBg}/{i}", m="DELETE")
-    return {RD:r,PRI:evt[PRI]}
+        cd, cont=_api(evt, f"{MDBg}/{i}/clusters/{name}", m="DELETE",eatable=True)
+        _l("cluster delete response cd:{cd}")
+        # This means that we really did just delete the cluster and should sleep
+        # a bit before the api call to delete the group. We might have gotten an "ok"
+        # error trying to delete the cluster because it's already been deleted
+        if not OK_EXCEPTION_STOP:
+            try:
+                _lw(f"deleted cluster, sleeping {DS}")
+                sleep(DS)
+            except Exception as e:
+                 _lw(f"exp sleeping:{e}")
+    try:
+        r=_api(evt, f"{MDBg}/{i}", m="DELETE",eatable=True)
+        _l(f"DELETE project cont:{cont} r:{r}")
+        return {RD:r,PRI:evt[PRI]}
+    except Exception as e:
+        _lw("fERROR: {e}")
+        return {RD:e,PRI:evt[PRI]}
+
 fns={'Create':create,'Update':update,'Delete':delete}
+
 def lambda_handler(evt, ctx):
     _l(f"got evt {evt}")
     rd={}
@@ -122,4 +158,4 @@ def lambda_handler(evt, ctx):
         cfnresponse.send(evt,ctx,cfnresponse.SUCCESS,rd[RD],rd[PRI])
     except Exception as error:
         log.error(error)
-        cfnresponse.send(evt,ctx,cfnresponse.FAILED,{'error':str(error)})
+        cfnresponse.send(evt,ctx,cfnresponse.FAILED,{'error':str(error)},CREATING_PRI)

@@ -30,7 +30,7 @@ Resources:
       OrgId: !Ref "OrgId"
       BackupRetentionPeriod: 0
       Plan: 
-        version: 5 
+        version: 9 
         project:
           name: !Sub "${AWS::StackName}"
         cluster:
@@ -41,12 +41,10 @@ Resources:
             instanceSizeName: "M10" 
             regionName: "US_EAST_1"
         accessList:
-        - ipAddress: "192.0.2.15"
-          comment: "IP address for Application Server A"
+        - ipAddress: "0.0.0.0/0"
+          comment: "IP address for the world, do NOT do this"
         - cidrBlock: "203.0.113.0/24"
           comment: "CIDR block for Application Server B - D"
-        - awsSecurityGroup: "sg-0026348ec11780bd1"
-          comment: "Access Listed AWS Security Group"
         databaseUsers:
         - username: !GetAtt "AtlasIAMRole.Arn"
           databaseName: "$external"
@@ -58,6 +56,14 @@ Outputs:
   AtlasDeployment:
     Description: "Info on your Atlas deployment"
     Value: !Ref AtlasDeployment
+    Export:
+      Name: !Join [ "-", [ !Ref "AWS::StackName","AtlasProjectId" ] ]
+  AtlasIAMRole:
+    Description: "ARN for AWS IAM Role database cluster access"
+    Value: !GetAtt "AtlasIAMRole.Arn"
+    Export:
+      Name: !Join [ "-", [ !Ref "AWS::StackName","AtlasIAMRoleARN" ] ]
+    
   SrvHost:
     Description: "Hostname for mongodb+srv:// connection string"
     Value: !GetAtt "AtlasDeployment.SrvHost"

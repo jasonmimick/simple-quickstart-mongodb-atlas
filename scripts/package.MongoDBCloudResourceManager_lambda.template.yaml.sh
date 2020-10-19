@@ -43,7 +43,7 @@ ls -lR functions/packages
 aws s3api put-object \
     --bucket simple-quickstart-mongodb-atlas \
     --key lambdas/MongoDBCloudResourceManager.zip \
-    --body functions/packages/MongoDBCloudResourceManager.zip
+    --body "${LAMBDA_ZIP}"
 
 
 

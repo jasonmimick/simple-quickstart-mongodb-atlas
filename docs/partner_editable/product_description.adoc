@@ -6,6 +6,8 @@ This quickstart is powered by a lightweight lambda-controller which connects you
 
 The templates/mongodbatlas-quickstart.template.yaml stack will provision a complete you MongoDB Atlas Deployment for you. This includes the follow resources
 
+* AWS IAM Role
 * MongoDB Atlas Project
 * MongoDB Atlas Cluster
 * MongoDB Atlas DatabaseUser via AWS IAM Role
+* MongoDB Atlas PrivateEndpoint via AWS PrivateLink?

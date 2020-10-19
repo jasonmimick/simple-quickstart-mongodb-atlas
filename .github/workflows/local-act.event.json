@@ -1,0 +1,7 @@
+{
+    "action" : "workflow_dispatch",
+    "inputs" : {
+      "region": "us-east-1",
+      "resourceManagerStackName": "atlas-cfn-quickstart"
+    }
+}
