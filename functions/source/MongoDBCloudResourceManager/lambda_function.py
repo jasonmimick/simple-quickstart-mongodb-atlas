@@ -1,6 +1,6 @@
+import cfnresponse
 import logging
 import sys
-import cfnresponse
 import requests
 from requests.auth import HTTPDigestAuth
 from time import sleep
@@ -10,7 +10,7 @@ log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 _l=log.info
 _lw=log.warn
-DS=20
+DS=30       # Sleep 30 seconds after cluster delete before deleting project
 RD="Data"
 RP="ResourceProperties"
 RT="RequestType"
@@ -23,9 +23,9 @@ CS="connectionStrings"
 OK_DELETE_ERRORCODES= [
     "GROUP_NOT_FOUND",
     "NOT_IN_GROUP",
-    "CLUSTER_ALREADY_REQUESTED_DELETION"
+    "CLUSTER_ALREADY_REQUESTED_DELETION",
+    "INVALID_GROUP_ID"
 ]
-OK_EXCEPTION_STOP=False
 
 def _p(e):
     return e[PRI].split('-')[-1].split(',')[-1].split(':')[-1]
@@ -41,20 +41,18 @@ def _api(evt,ep,m="GET",d={},eatable=False):
     elif (m == "POST"):
         r = requests.post(ep,auth=HTTPDigestAuth(pub,pvt),headers={"Content-Type":"application/json"},json=d)
     else:
-        raise Execption(f"bad m:{m}")
+        raise Exception(f"bad m:{m}")
+
     j=r.json()
     _l(f"_api m:{m} json:{j}")
     if "error" in j:
         if (eatable and (j['errorCode'] in OK_DELETE_ERRORCODES)):
             _lw(f"OK ERROR DETECTED: Error: {j}")
-            OK_EXCEPTION_STOP=True
-            return j
+            return { "Code" : "STOP", "Message" : "Ok error response from MongoDB Cloud detected." }
         else:
-            OK_EXCEPTION_STOP=False
             _lw(traceback.print_exc())
             raise Exception(j)
     else:
-        OK_EXCEPTION_STOP=False
         return j
 
 CREATING_PRI=""
@@ -120,29 +118,37 @@ def update(evt):
 
 def delete(evt):
     name=evt[RP]["Name"]
-    prj, cont = _api(evt,f"{MDBg}/{_p(evt)}",eatable=True)
-    if OK_EXCEPTION_STOP:
-      return {RD:prj,PRI:evt[PRI]}
+    potential_pid=_p(evt)
+    if "LATEST" in potential_pid:
+        _l(f"Broken deployment invalid id format: {potential_pid}. Cleaning up")
+        return {RD:{"Message":"Cleaing up invalid id resource"},PRI:evt[PRI]}
+    prj = _api(evt,f"{MDBg}/{_p(evt)}",eatable=True)
+    _l(f"delete prj:{prj}")
+    if prj.get('Code')=="STOP":
+        _l(f"prj was STOP ------->>>> returning OK here, should be doing")
+        return {RD:prj,PRI:evt[PRI]}
+
+    if not 'id' in prj:
+        raise Exception(f"No id in prj, this should not ever happen {prj}")
     i=prj['id']
     if int(prj['clusterCount'])>0:
-        cd, cont=_api(evt, f"{MDBg}/{i}/clusters/{name}", m="DELETE",eatable=True)
-        _l("cluster delete response cd:{cd}")
+        cd=_api(evt, f"{MDBg}/{i}/clusters/{name}", m="DELETE",eatable=True)
+        _l(f"cluster delete response cd:{cd}")
         # This means that we really did just delete the cluster and should sleep
         # a bit before the api call to delete the group. We might have gotten an "ok"
         # error trying to delete the cluster because it's already been deleted
-        if not OK_EXCEPTION_STOP:
-            try:
-                _lw(f"deleted cluster, sleeping {DS}")
-                sleep(DS)
-            except Exception as e:
-                 _lw(f"exp sleeping:{e}")
+        try:
+            _lw(f"deleted cluster, sleeping {DS}")
+            sleep(DS)
+        except Exception as e:
+            _lw(f"exp sleeping:{e}")
     try:
         r=_api(evt, f"{MDBg}/{i}", m="DELETE",eatable=True)
-        _l(f"DELETE project cont:{cont} r:{r}")
+        _l(f"DELETE project r:{r}")
         return {RD:r,PRI:evt[PRI]}
     except Exception as e:
-        _lw("fERROR: {e}")
-        return {RD:e,PRI:evt[PRI]}
+        _lw(f"ERROR: {e}")
+        return {RD:{"Error": str(e),PRI:evt[PRI]}}
 
 fns={'Create':create,'Update':update,'Delete':delete}
 
