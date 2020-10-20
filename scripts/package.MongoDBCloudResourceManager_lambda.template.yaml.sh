@@ -26,6 +26,14 @@ else
   echo "Smooth sailing sir!"
 fi
 
+# Freshen our python libs
+rm -rf functions/source/MongoDBCloudResourceManager/package
+mkdir functions/source/MongoDBCloudResourceManager/package
+python3 -m pip install \
+ --target functions/source/MongoDBCloudResourceManager/package \
+ -r functions/source/MongoDBCloudResourceManager/requirements.txt
+
+pylint functions/source/MongoDBCloudResourceManager/*.py
 
 # Zip up the lambda source
 LAMBDA_ZIP="$(pwd)/functions/packages/MongoDBCloudResourceManager.zip"
