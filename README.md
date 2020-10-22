@@ -1,6 +1,6 @@
 # quickstart-mongodb-atlas 
 
-![Quick Start architecture for MongoDB Atlas on AWS](docs/images/atlas-aws-privatelink.svg)
+![Quick Start architecture for MongoDB Atlas on AWS](docs/images/simple-quickstart-arch.png)
 
 # How to run this
 ## Setup AWS & API Keys

@@ -63,7 +63,6 @@ Outputs:
     Value: !GetAtt "AtlasIAMRole.Arn"
     Export:
       Name: !Join [ "-", [ !Ref "AWS::StackName","AtlasIAMRoleARN" ] ]
-    
   SrvHost:
     Description: "Hostname for mongodb+srv:// connection string"
     Value: !GetAtt "AtlasDeployment.SrvHost"
