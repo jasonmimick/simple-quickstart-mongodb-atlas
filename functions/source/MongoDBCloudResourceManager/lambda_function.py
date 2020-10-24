@@ -11,13 +11,11 @@ log.setLevel(logging.DEBUG)
 _l=log.info
 _lw=log.warn
 DS=30       # Sleep 30 seconds after cluster delete before deleting project
-RD="Data"
+RESP_DATA="Data"
 RP="ResourceProperties"
 RT="RequestType"
 PRI="PhysicalResourceId"
 MDBg="https://cloud.mongodb.com/api/atlas/v1.0/groups"
-RT_DPL="Custom::AtlasDeployment"
-RT_DBU="Custom::AtlasDatabaseUser"
 PRID="X"
 CS="connectionStrings"
 OK_DELETE_ERRORCODES= [
@@ -60,12 +58,9 @@ def create(evt):
     _l(f"create:evt:{evt}")
     p = evt[RP]
     rt = evt['ResourceType']
-    prj = p['Plan']['project']
+    prj = p['Project']
     prj['orgId'] = p['OrgId']
-    if rt==RT_DPL:
-      pR = _api(evt, f"{MDBg}",m="POST", d=prj)
-    else:
-      pR = _api(evt, f"{MDBg}/byName/{evt[RP]['Name']}")
+    pR = _api(evt, f"{MDBg}",m="POST", d=prj)
     resp = {}
     pid=pR['id']
     prid = f"org:{pR['orgId']},project:{pid}"
@@ -73,7 +68,7 @@ def create(evt):
     CREATING_PRI=prid
     # Database Users
     _d = []
-    for dbu in p['Plan'].get('databaseUsers'):
+    for dbu in p.get('DatabaseUsers'):
       dbu['groupId']=pid
       dbr = _api(evt, f"{MDBg}/{pid}/databaseUsers",m="POST", d=dbu)
       _d.append(dbr)
@@ -82,37 +77,41 @@ def create(evt):
     for k in ecpa:
       resp[f"cloudProviderAccess-{k}"] = ecpa[k]
     # Access List (ip, peering, etc)
-    if 'accessList' in p['Plan']:
-      resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['Plan']['accessList'])
+    if 'AccessList' in p:
+      resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['AccessList'])
     # Finally, cluster since it takes time
-    if "cluster" in p['Plan']:
-      c=p['Plan']['cluster']
+    if "Cluster" in p:
+      c=p['Cluster']
+      c.providerName = "AWS"
       ce=f"{MDBg}/{pid}/clusters"
       cr=_api(evt, ce,m="POST", d=c)
-      resp["SrvHost"]=w4c(evt,ce,5)
+      resp["SrvHost"]=wait_for_cluster(evt,ce,5)
     resp["project"]=_api(evt,f"{MDBg}/{pid}")
-    return {RD:resp,PRI:prid}
-def w4c(evt,ep,m=1):
+    return {RESP_DATA:resp,PRI:prid}
+
+
+def wait_for_cluster(evt,ep,m=1):
     _l(f"{m}min wait cluster")
     sleep(m*60)
     c=_api(evt,ep)['results'][0]
     if c.get('stateName')=="IDLE":
         return c.get('srvAddress')
     else:
-        return w4c(evt,ep,1)
+        return wait_for_cluster(evt,ep,1)
+
 def update(evt):
     _l(f"update:evt:{evt}")
     prj=_api(evt,f"{MDBg}/{_p(evt)}")
     r={PRI:evt[PRI]}
-    r[RD]={}
+    r[RESP_DATA]={}
     i=prj['id']
     if int(prj['clusterCount'])>0:
         c=_api(evt, f"{MDBg}/{i}/clusters/{evt[RP]['Name']}")
-        r[RD]["SrvHost"]=c.get('srvAddress',c.get('stateName'))
+        r[RESP_DATA]["SrvHost"]=c.get('srvAddress',c.get('stateName'))
     e = _api(evt,f"{MDBg}/{i}/cloudProviderAccess")
     for k in e['awsIamRoles'][0]:
-        r[RD][f"cloudProviderAccess-{k}"] = e['awsIamRoles'][0][k]
-    if 'accessList' in p['Plan']:
+        r[RESP_DATA][f"cloudProviderAccess-{k}"] = e['awsIamRoles'][0][k]
+    if 'accessList' in p['AccessList']:
         resp["accessList"]=_api(evt,f"{MDBg}/{pid}/accessList",m="POST",d=p['Plan']['accessList'])
     return r
 
@@ -121,12 +120,14 @@ def delete(evt):
     potential_pid=_p(evt)
     if "LATEST" in potential_pid:
         _l(f"Broken deployment invalid id format: {potential_pid}. Cleaning up")
-        return {RD:{"Message":"Cleaing up invalid id resource"},PRI:evt[PRI]}
+        # Note - we just return without error here, this will "clean up" the cfn resource on the AWS-side
+        # we don't have anything to clean up on the MongoDB side
+        return {RESP_DATA:{"Message":"Cleaning up invalid id resource"},PRI:evt[PRI]}
     prj = _api(evt,f"{MDBg}/{_p(evt)}",eatable=True)
     _l(f"delete prj:{prj}")
     if prj.get('Code')=="STOP":
         _l(f"prj was STOP ------->>>> returning OK here, should be doing")
-        return {RD:prj,PRI:evt[PRI]}
+        return {RESP_DATA:prj,PRI:evt[PRI]}
 
     if not 'id' in prj:
         raise Exception(f"No id in prj, this should not ever happen {prj}")
@@ -145,10 +146,10 @@ def delete(evt):
     try:
         r=_api(evt, f"{MDBg}/{i}", m="DELETE",eatable=True)
         _l(f"DELETE project r:{r}")
-        return {RD:r,PRI:evt[PRI]}
+        return {RESP_DATA:r,PRI:evt[PRI]}
     except Exception as e:
         _lw(f"ERROR: {e}")
-        return {RD:{"Error": str(e),PRI:evt[PRI]}}
+        return {RESP_DATA:{"Error": str(e),PRI:evt[PRI]}}
 
 fns={'Create':create,'Update':update,'Delete':delete}
 
@@ -156,12 +157,13 @@ def lambda_handler(evt, ctx):
     _l(f"got evt {evt}")
     rd={}
     try:
+        # lookup name of right function and call it, create/update/delete
         rd=fns[evt[RT]](evt)
         _l(f"rd:{rd}")
         if PRI not in rd:
             log.error(f"No PRI in rsp")
             raise Exception(rd)
-        cfnresponse.send(evt,ctx,cfnresponse.SUCCESS,rd[RD],rd[PRI])
+        cfnresponse.send(evt,ctx,cfnresponse.SUCCESS,rd[RESP_DATA],rd[PRI])
     except Exception as error:
         log.error(error)
         cfnresponse.send(evt,ctx,cfnresponse.FAILED,{'error':str(error)},CREATING_PRI)
