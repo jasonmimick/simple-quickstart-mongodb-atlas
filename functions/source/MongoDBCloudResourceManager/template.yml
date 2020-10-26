@@ -13,6 +13,11 @@ Resources:
       Handler: lambda_function.lambda_handler
       Runtime: python3.7
       CodeUri: /
+      Environment:
+        Variables:
+          PUBLIC_KEY: !Ref "PublicKey"
+          PRIVATE_KEY: !Ref "PublicKey"
+          ORG_ID: !Ref "OrgId"
 
   TestEntrypoint:
     Type: AWS::Serverless::Function
@@ -20,4 +25,9 @@ Resources:
       Handler: lambda_function.test_entrypoint
       Runtime: python3.7
       CodeUri: /
+      Environment:
+        Variables:
+          PUBLIC_KEY: !Ref "PublicKey"
+          PRIVATE_KEY: !Ref "PublicKey"
+          ORG_ID: !Ref "OrgId"
 

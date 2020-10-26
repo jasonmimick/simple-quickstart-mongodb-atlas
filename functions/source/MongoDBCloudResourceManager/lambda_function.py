@@ -8,9 +8,19 @@ import traceback
 import boto3
 import base64
 from botocore.exceptions import ClientError
+import os
 
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
+
+# check if we deployed with environment variable Atlas API KEY
+DEPLOY_KEY = {
+    "PUBLIC_KEY": os.getenv("PUBLIC_KEY","NOT-FOUND"),
+    "PRIVATE_KEY": os.getenv("PRIVATE_KEY","NOT-FOUND"),
+    "ORG_ID": os.getenv("ORG_ID","NOT-FOUND")
+}
+print(f"{DEPLOY_KEY}")
+log.info(f"##REMOVE##~~~> DEPLOY_KEY:{DEPLOY_KEY}")
 DS=30       # Sleep 30 seconds after cluster delete before deleting project
 RESP_DATA="Data"
 RP="ResourceProperties"
@@ -43,17 +53,11 @@ def read_secret(secret_name):
         )
     except ClientError as e:
         # Some error happened here. Log it / handle it / raise it.
+        log.error(f"Error read_secret e:{e}")
         raise e
     else:
-        for k in keys:
-            if k in get_secret_value_response:
-                secret = get_secret_value_response[k]
-                log.info(f"Got k:{k}=secret:{secret}")
-                return_secret[k]=secret
-            else:
-                log.warn(f"What how was '{k}' not in {get_secret_value_response}")
-    log.info(f"REMOVE==========> return_secret:{return_secret}")
-    return return_secret
+        log.info(f"REMOVE==========> get_secret_value_response:{get_secret_value_response}")
+        return get_secret_value_response
 
 def _p(e):
     return e[PRI].split('-')[-1].split(',')[-1].split(':')[-1]
@@ -64,19 +68,28 @@ def _api(evt,ep,m="GET",d={},eatable=False):
     privatekey_secret_template_value=evt[RP].get('PrivateKey','')
     log.debug(f"**REMOVE** publickey_secret_template_value:{publickey_secret_template_value}")
     log.debug(f"**REMOVE** privatekey_secret_template_value:{privatekey_secret_template_value}")
-    if 'resolve:secretsmanager' in publickey_secret_template_value:
-        log.warn("Detected AWS Secret Manager integration, looking up secret for Atlas API Keys")
+    if VALID_DEPLOY_KEY:
+        pub = DEPLOY_KEY['PUBLIC_KEY']
+        pvt = DEPLOY_KEY['PRIVATE_KEY']
+        log.warning("Override API KEY from deployed Key")
+    elif 'resolve:secretsmanager' in publickey_secret_template_value:
+        log.warning("Detected AWS Secret Manager integration, looking up secret for Atlas API Keys")
         secret_name_public, secret_public_key_name = resolve_secretmanager_ref(publickey_secret_template_value)
         secret_name_private, secret_private_key_name = resolve_secretmanager_ref(publickey_secret_template_value)
         log.info(f"secret_name_pubic:{secret_name_public}, secret_public_key_name={secret_public_key_name}")
         log.info(f"secret_name_private:{secret_name_private}, secret_private_key_name={secret_private_key_name}")
-        pub = read_secret(secret_name_public, secret_public_key_name)
-        pri = read_secret(secret_name_private, secret_private_key_name)
+        pub = read_secret(secret_name_public).get(secret_public_key_name,"NOT_IN_SECRET")
+        pri = read_secret(secret_name_private).get(secret_private_key_name,"NOT_IN_SECRET")
         log.debug(f"~~~~~~~~~~ back from secret lookup, does it work? ~~~>  pub:{pub}, pvt:{pvt}")
     else:
-        log.warn("No Secret detected, assume Atlas APIKey values in template request")
+        log.warning("No Secret detected & no DEPLOY_KEY, assume Atlas APIKey values in template request")
         pub = publickey_secret_template_value
         pvt = privatekey_secret_template_value
+
+    return __api(pub,pvt,ep,m,d,eatable)
+
+def __api(pub,pvt,ep,m="GET",d={},eatable=False):
+
     if (m=="GET"):
         r=requests.get(ep,auth=HTTPDigestAuth(pub,pvt))
     elif (m=="DELETE"):
@@ -90,10 +103,10 @@ def _api(evt,ep,m="GET",d={},eatable=False):
     log.info(f"_api m:{m} json:{j}")
     if "error" in j:
         if (eatable and (j['errorCode'] in OK_DELETE_ERRORCODES)):
-            log.warn(f"OK ERROR DETECTED: Error: {j}")
+            log.warning(f"OK ERROR DETECTED: Error: {j}")
             return { "Code" : "STOP", "Message" : "Ok error response from MongoDB Cloud detected." }
         else:
-            log.warn(traceback.print_exc())
+            log.warning(traceback.print_exc())
             raise Exception(j)
     else:
         return j
@@ -104,7 +117,8 @@ def create(evt):
     p = evt[RP]
     rt = evt['ResourceType']
     prj = p['Project']
-    prj['orgId'] = p['OrgId']
+    prj['orgId'] = p.get('OrgId',DEPLOY_KEY.get('OrgId'))
+    logger.info(f"create- try create prj:{prj}")
     pR = _api(evt, f"{MDBg}",m="POST", d=prj)
     resp = {}
     pid=pR['id']
@@ -184,19 +198,31 @@ def delete(evt):
         # a bit before the api call to delete the group. We might have gotten an "ok"
         # error trying to delete the cluster because it's already been deleted
         try:
-            log.warn(f"deleted cluster, sleeping {DS}")
+            log.warning(f"deleted cluster, sleeping {DS}")
             sleep(DS)
         except Exception as e:
-            log.warn(f"exp sleeping:{e}")
+            log.warning(f"exp sleeping:{e}")
     try:
         r=_api(evt, f"{MDBg}/{i}", m="DELETE",eatable=True)
         log.info(f"DELETE project r:{r}")
         return {RESP_DATA:r,PRI:evt[PRI]}
     except Exception as e:
-        log.warn(f"ERROR: {e}")
+        log.warning(f"ERROR: {e}")
         return {RESP_DATA:{"Error": str(e),PRI:evt[PRI]}}
 
 fns={'Create':create,'Update':update,'Delete':delete}
+VALID_DEPLOY_KEY=False
+
+try :
+    print(f"DEPLOY_KEY:{DEPLOY_KEY}")
+    try_public = DEPLOY_KEY["PUBLIC_KEY"]
+
+    try_private = DEPLOY_KEY["PRIVATE_KEY"]
+    print(f"{try_public} {try_private}")
+    VALID_DEPLOY_KEY = (__api(try_public, try_private, f"{MDBg}") != None )
+    log.warning(f"Tried to validate DEPLOY_KEY: VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}")
+except Exception as e:
+    log.warning(f"ERROR: {e}")
 
 def lambda_handler(evt, ctx):
     log.info(f"got evt {evt}")

@@ -17,6 +17,18 @@ Parameters:
   CustomProviderZipFileName:
     Type: String
     Default: "lambdas/MongoDBCloudResourceManager.zip"
+  PublicKey:
+    Description: "Optional, deploy a resource manager with a fixed MongoDB Cloud Public API Key"
+    Type: String
+    Default: "NOT_SET"
+  PrivateKey:
+    Description: "Optional, deploy a resource manager with a fixed MongoDB Cloud Private API Key"
+    Type: String
+    Default: "NOT_SET"
+  OrgId:
+    Description: "Optional, deploy a resource manager with a fixed MongoDB Cloud Organization Id"
+    Type: String
+    Default: "NOT_SET"
 Resources:
   MongoDBCloudResourceManager:
     Type: AWS::Lambda::Function
@@ -28,7 +40,13 @@ Resources:
       Handler: "lambda_function.lambda_handler"
       Timeout: 700
       Role: !GetAtt 'LambdaRole.Arn'
-      Runtime: python3.6
+      Runtime: python3.7
+      Environment:
+        Variables:
+          PUBLIC_KEY: !Ref "PublicKey"
+          PRIVATE_KEY: !Ref "PrivateKey"
+          ORG_ID: !Ref "OrgId"
+
   # The LambdaRole is very simple for this use case, because it only need to have access to write logs
   # If the lambda is going to access AWS services using boto3, this role must be
   # extended to give lambda the appropriate permissions.
