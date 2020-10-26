@@ -1,0 +1,11 @@
+{
+    "typeName": "MongoDB::Atlas::Deployment",
+    "language": "python37",
+    "runtime": "python3.7",
+  
+    "entrypoint": "lambda_function.lambda_handler",
+    "testEntrypoint": "lambda_function.test_entrypoint",
+    "settings": {
+        "use_docker": true 
+    }
+}

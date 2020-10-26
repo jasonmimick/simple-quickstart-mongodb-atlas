@@ -1,0 +1,197 @@
+{
+    "typeName": "MongoDB::Atlas::Deployment",
+    "description": "An example resource schema demonstrating some basic constructs and validation rules.",
+    "sourceUrl": "https://github.com/aws-cloudformation/aws-cloudformation-rpdk.git",
+    "definitions": {
+        "ApiKey": {
+            "type": "object",
+            "$comment": "A valid MongoDB Cloud API Key",
+            "properties": {
+                "PublicKey": {
+                    "type": "string"
+                },
+                "PrivateKey": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "PublicKey",
+                "PrivateKey"
+            ],
+            "additionalProperties": false
+        },
+        "Project": {
+            "type": "object",
+            "$comment": "A MongoDB Atlas Project",
+            "properties": {
+                "Name": { "type" : "string" },
+                "Id": { "type" : "string" },
+                "OrgId": { "type" : "string" }
+            },
+            "required": [
+                "Name"
+            ],
+            "additionalProperties": false
+        },
+        "Cluster": {
+            "type": "object",
+            "$comment": "A MongoDB Atlas Cluster",
+            "properties": {
+                "MongoDBMajorVersion": { 
+                    "type" : "string",
+                    "enum" : ["4.4", "4.2"]
+                },  
+                "InstanceSize": {
+                    "type": "string",
+                    "enum" : ["M10", "M20", "M30" ]
+                },
+                "RegionName": {
+                    "type": "string"
+                }
+            },
+            "required": [
+            ],
+            "additionalProperties": false
+        },
+        "AccessListEntry": {
+            "type": "object",
+            "$comment": "A MongoDB Atlas Project",
+            "properties": {
+                "Comment": { "type" : "string" },
+                "IPAddress": { "type" : "string" },
+                "CIDRBlock": { "type" : "string" },
+                "AWSSecurityGroup": { "type" : "string" }
+            },
+            "required": [
+            ],
+            "additionalProperties": false
+        },
+        "DatabaseRole": {
+            "type": "object",
+            "$comment": "A MongoDB Atlas Database Role",
+            "properties": {
+                "RoleName": { "type" : "string" },
+                "DatabaseName": { "type" : "string" }
+            },
+            "required": [
+            ],
+            "additionalProperties": false
+        },
+        "DatabaseUser": {
+            "type": "object",
+            "$comment": "A MongoDB Atlas Project",
+            "properties": {
+                "Username": { "type" : "string" },
+                "Password": { "type" : "string" },
+                "DatabaseName": { "type" : "string" },
+                "AWSIAMType": { "type" : "string" },
+                "Roles": { "type" : "array", "items" : { "$ref" : "#/definitions/DatabaseRole" } }
+            },
+            "required": [
+            ],
+            "additionalProperties": false
+        },
+        "InterfaceEndpoint": {
+            "type": "object",
+            "$comment": "A MongoDB Atlas Private Endpoint Interface Endpoint",
+            "properties": {
+                "EndpointServiceName": { "type": "string" },
+                "DeleteRequested": { "type": "boolean" },
+                "ConnectionStatus": { "type": "string" },
+                "ErrorMessage": { "type": "string" },
+                "InterfaceEndpointId":{ "type": "string" }
+ 
+            },
+            "required": [
+            ],
+            "additionalProperties": false
+        },
+        "PrivateEndpoint": {
+            "type": "object",
+            "$comment": "A MongoDB Atlas Private Endpoint",
+            "properties": {
+                "EndpointServiceName": { "type": "string" },
+                "Id": { "type": "string" },
+                "Status": { "type": "string" },
+                "ErrorMessage": { "type": "string" },
+                "InterfaceEndpoints": { "type": "array", "items" : { "$ref" : "#/definitions/InterfaceEndpoint" } }
+            },
+            "required": [
+            ],
+            "additionalProperties": false
+        }
+    },
+    "properties": {
+        "Name": {
+            "description": "The name for the MongoDB Atlas Deployment (Project, Cluster, +).",
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 30
+        },
+        "ApiKey": {
+            "$ref": "#/definitions/ApiKey"
+        },
+        "Project": {
+            "$ref": "#/definitions/Project"
+        },
+        "Cluster": {
+            "$ref": "#/definitions/Cluster"
+        },
+        "DatabaseUsers": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/DatabaseUser"
+            }
+        },
+        "AccessList": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/AccessListEntry"
+            }
+        },
+        "PrivateEndpoint": {
+            "$ref": "#/definitions/PrivateEndpoint"
+        }
+    },
+    "additionalProperties": false,
+    "required": [
+        "Name",
+        "ApiKey",
+        "Project",
+        "Cluster"
+    ],
+    "readOnlyProperties": [
+        "/properties/Project.Id",
+        "/properties/PrivateEndpoint"
+    ],
+    "primaryIdentifier": [
+        "/properties/Project.Id"
+    ],
+    "handlers": {
+        "create": {
+            "permissions": [
+                "mongodb-atlas:CreateAtlasDeployment"
+            ]
+        },
+        "read": {
+            "permissions": [
+                "mongodb-atlas:DescribeAtlasDeployment"
+            ]
+        },
+        "update": {
+            "permissions": [
+                "mongodb-atlas:UpdateAtlasDeployment"
+            ]
+        },
+        "delete": {
+            "permissions": [
+                "mongodb-atlas:DeleteAtlasDeployment"
+            ]
+        },
+        "list": {
+            "permissions": [
+                "mongodb-atlas:ListAtlasDeployments"
+            ]
+        }
+    }
+}

@@ -5,11 +5,12 @@ import requests
 from requests.auth import HTTPDigestAuth
 from time import sleep
 import traceback
+import boto3
+import base64
+from botocore.exceptions import ClientError
 
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
-_l=log.info
-_lw=log.warn
 DS=30       # Sleep 30 seconds after cluster delete before deleting project
 RESP_DATA="Data"
 RP="ResourceProperties"
@@ -25,13 +26,57 @@ OK_DELETE_ERRORCODES= [
     "INVALID_GROUP_ID"
 ]
 
+def resolve_secretmanager_ref(ref):
+  key_name = ref.split("{{")[1].split('}}')[0].split(":")[-1]
+  secret_name = ref.split("{{")[1].split('}}')[0].split(":")[-3]
+  return (secret_name, key_name)
+
+def read_secret(secret_name):
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager'
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # Some error happened here. Log it / handle it / raise it.
+        raise e
+    else:
+        for k in keys:
+            if k in get_secret_value_response:
+                secret = get_secret_value_response[k]
+                log.info(f"Got k:{k}=secret:{secret}")
+                return_secret[k]=secret
+            else:
+                log.warn(f"What how was '{k}' not in {get_secret_value_response}")
+    log.info(f"REMOVE==========> return_secret:{return_secret}")
+    return return_secret
+
 def _p(e):
     return e[PRI].split('-')[-1].split(',')[-1].split(':')[-1]
 
 
 def _api(evt,ep,m="GET",d={},eatable=False):
-    pub=evt[RP].get('PublicKey','')
-    pvt=evt[RP].get('PrivateKey','')
+    publickey_secret_template_value=evt[RP].get('PublicKey','')
+    privatekey_secret_template_value=evt[RP].get('PrivateKey','')
+    log.debug(f"**REMOVE** publickey_secret_template_value:{publickey_secret_template_value}")
+    log.debug(f"**REMOVE** privatekey_secret_template_value:{privatekey_secret_template_value}")
+    if 'resolve:secretsmanager' in publickey_secret_template_value:
+        log.warn("Detected AWS Secret Manager integration, looking up secret for Atlas API Keys")
+        secret_name_public, secret_public_key_name = resolve_secretmanager_ref(publickey_secret_template_value)
+        secret_name_private, secret_private_key_name = resolve_secretmanager_ref(publickey_secret_template_value)
+        log.info(f"secret_name_pubic:{secret_name_public}, secret_public_key_name={secret_public_key_name}")
+        log.info(f"secret_name_private:{secret_name_private}, secret_private_key_name={secret_private_key_name}")
+        pub = read_secret(secret_name_public, secret_public_key_name)
+        pri = read_secret(secret_name_private, secret_private_key_name)
+        log.debug(f"~~~~~~~~~~ back from secret lookup, does it work? ~~~>  pub:{pub}, pvt:{pvt}")
+    else:
+        log.warn("No Secret detected, assume Atlas APIKey values in template request")
+        pub = publickey_secret_template_value
+        pvt = privatekey_secret_template_value
     if (m=="GET"):
         r=requests.get(ep,auth=HTTPDigestAuth(pub,pvt))
     elif (m=="DELETE"):
@@ -42,20 +87,20 @@ def _api(evt,ep,m="GET",d={},eatable=False):
         raise Exception(f"bad m:{m}")
 
     j=r.json()
-    _l(f"_api m:{m} json:{j}")
+    log.info(f"_api m:{m} json:{j}")
     if "error" in j:
         if (eatable and (j['errorCode'] in OK_DELETE_ERRORCODES)):
-            _lw(f"OK ERROR DETECTED: Error: {j}")
+            log.warn(f"OK ERROR DETECTED: Error: {j}")
             return { "Code" : "STOP", "Message" : "Ok error response from MongoDB Cloud detected." }
         else:
-            _lw(traceback.print_exc())
+            log.warn(traceback.print_exc())
             raise Exception(j)
     else:
         return j
 
 CREATING_PRI=""
 def create(evt):
-    _l(f"create:evt:{evt}")
+    log.info(f"create:evt:{evt}")
     p = evt[RP]
     rt = evt['ResourceType']
     prj = p['Project']
@@ -91,7 +136,7 @@ def create(evt):
 
 
 def wait_for_cluster(evt,ep,m=1):
-    _l(f"{m}min wait cluster")
+    log.info(f"{m}min wait cluster")
     sleep(m*60)
     c=_api(evt,ep)['results'][0]
     if c.get('stateName')=="IDLE":
@@ -100,7 +145,7 @@ def wait_for_cluster(evt,ep,m=1):
         return wait_for_cluster(evt,ep,1)
 
 def update(evt):
-    _l(f"update:evt:{evt}")
+    log.info(f"update:evt:{evt}")
     prj=_api(evt,f"{MDBg}/{_p(evt)}")
     r={PRI:evt[PRI]}
     r[RESP_DATA]={}
@@ -119,14 +164,14 @@ def delete(evt):
     name=evt[RP]["Name"]
     potential_pid=_p(evt)
     if "LATEST" in potential_pid:
-        _l(f"Broken deployment invalid id format: {potential_pid}. Cleaning up")
+        log.info(f"Broken deployment invalid id format: {potential_pid}. Cleaning up")
         # Note - we just return without error here, this will "clean up" the cfn resource on the AWS-side
         # we don't have anything to clean up on the MongoDB side
         return {RESP_DATA:{"Message":"Cleaning up invalid id resource"},PRI:evt[PRI]}
     prj = _api(evt,f"{MDBg}/{_p(evt)}",eatable=True)
-    _l(f"delete prj:{prj}")
+    log.info(f"delete prj:{prj}")
     if prj.get('Code')=="STOP":
-        _l(f"prj was STOP ------->>>> returning OK here, should be doing")
+        log.info(f"prj was STOP ------->>>> returning OK here, should be doing")
         return {RESP_DATA:prj,PRI:evt[PRI]}
 
     if not 'id' in prj:
@@ -134,32 +179,32 @@ def delete(evt):
     i=prj['id']
     if int(prj['clusterCount'])>0:
         cd=_api(evt, f"{MDBg}/{i}/clusters/{name}", m="DELETE",eatable=True)
-        _l(f"cluster delete response cd:{cd}")
+        log.info(f"cluster delete response cd:{cd}")
         # This means that we really did just delete the cluster and should sleep
         # a bit before the api call to delete the group. We might have gotten an "ok"
         # error trying to delete the cluster because it's already been deleted
         try:
-            _lw(f"deleted cluster, sleeping {DS}")
+            log.warn(f"deleted cluster, sleeping {DS}")
             sleep(DS)
         except Exception as e:
-            _lw(f"exp sleeping:{e}")
+            log.warn(f"exp sleeping:{e}")
     try:
         r=_api(evt, f"{MDBg}/{i}", m="DELETE",eatable=True)
-        _l(f"DELETE project r:{r}")
+        log.info(f"DELETE project r:{r}")
         return {RESP_DATA:r,PRI:evt[PRI]}
     except Exception as e:
-        _lw(f"ERROR: {e}")
+        log.warn(f"ERROR: {e}")
         return {RESP_DATA:{"Error": str(e),PRI:evt[PRI]}}
 
 fns={'Create':create,'Update':update,'Delete':delete}
 
 def lambda_handler(evt, ctx):
-    _l(f"got evt {evt}")
+    log.info(f"got evt {evt}")
     rd={}
     try:
         # lookup name of right function and call it, create/update/delete
         rd=fns[evt[RT]](evt)
-        _l(f"rd:{rd}")
+        log.info(f"rd:{rd}")
         if PRI not in rd:
             log.error(f"No PRI in rsp")
             raise Exception(rd)
@@ -167,3 +212,7 @@ def lambda_handler(evt, ctx):
     except Exception as error:
         log.error(error)
         cfnresponse.send(evt,ctx,cfnresponse.FAILED,{'error':str(error)},CREATING_PRI)
+
+def test_entrypoint(evt, ctx):
+    log.info(f"test_entrypoint! does it work? {evt} {ctx}")
+    cfnresponse.send(evt,ctx,cfnresponse.FAILED,{'error':"Not implemented, yet"},None)

@@ -44,7 +44,8 @@ zip -r9 "${LAMBDA_ZIP}" .
 cd -;
 
 cd functions/source/MongoDBCloudResourceManager
-zip -g "${LAMBDA_ZIP}" lambda_function.py
+# explicitly adding what we need to make cloudformation register-type work
+zip -g "${LAMBDA_ZIP}" lambda_function.py schema.json template.yml .rpdk-config
 cd -;
 
 ls -lR functions/packages

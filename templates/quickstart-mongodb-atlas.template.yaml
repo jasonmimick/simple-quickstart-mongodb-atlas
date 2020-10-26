@@ -133,7 +133,10 @@ Resources:
     Properties:
       Name: !Sub "${AWS::StackName}-ApiKey-Secret"
       Description: This secret has a hardcoded password in SecretString (use GenerateSecretString instead)
-      SecretString: !Join ["", ['{"PublicKey":', !Ref "PublicKey",' "PrivateKey":', !Ref "PrivateKey", '"OrdId":', !Ref "OrgId", '}'] ]
+      #
+      # { "PublicKey" : "xxx", "PrivateKey", "yyy", "OrgId": "zzz" }
+      #
+      SecretString: !Join ['', ['{"PublicKey":"', !Ref "PublicKey",'", "PrivateKey":"', !Ref "PrivateKey", '", "OrgId":"', !Ref "OrgId", '"}'] ]
       Tags:
       - Key: mongodb-atlas-quickstart-stack 
         Value: !Sub "${AWS::StackName}"
