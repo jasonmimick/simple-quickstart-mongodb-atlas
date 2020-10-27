@@ -41,9 +41,9 @@ into the `AWS_REGION` of your choice before running the quickstart.
 
 ```bash
 aws cloudformation create-stack \
-  --template-body file://templates/mongodbatlas-resource-manager.template.yaml \
+  --template-body file://templates/mongodb-atlas-resource-provider.template.yaml \
   --capabilities CAPABILITY_IAM \
-  --stack-name mongodbatlas-resource-manager 
+  --stack-name mongodb-atlas-resource-provider 
 ```
 
 # Launch the quickstart stack

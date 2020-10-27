@@ -1,15 +1,52 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  MongoDB Atlas AWS Quickstart 
+  MongoDB Cloud Resource Manager - CloudFormation Provider. 
+  This is a lambda function which provides a custom endpoint for 
+  CloudFormation to manage instances of the MongoDB Atlas AWS Quickstart.
+  See, http://docs.mongodb.com/quickstarts/aws
+Parameters:
+  QSS3BucketName:
+    AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
+    Default: "aws-quickstart"
+    Type: "String"
+    ConstraintDescription: "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+    Description: "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+    Default: "simple-quickstart-mongodb-atlas"
+  CustomProviderZipFileName:
+    Type: String
+    Default: "lambdas/MongoDBCloudResourceManager.zip"
+  PublicKey:
+    Description: "Optional, deploy a resource manager with a fixed MongoDB Cloud Public API Key"
+    Type: String
+    Default: "NOT_SET"
+  PrivateKey:
+    Description: "Optional, deploy a resource manager with a fixed MongoDB Cloud Private API Key"
+    Type: String
+    Default: "NOT_SET"
+  OrgId:
+    Description: "Optional, deploy a resource manager with a fixed MongoDB Cloud Organization Id"
+    Type: String
+    Default: "NOT_SET"
 Resources:
   MongoDBCloudResourceManager:
     Type: AWS::Lambda::Function
     Properties:
       Code:
-        S3Bucket: "simple-quickstart-mongodb-atlas"
-        S3Key: "lambdas/MongoDBCloudResourceManager.zip"
+        S3Bucket: !Ref "QSS3BucketName"
+        S3Key: !Ref "CustomProviderZipFileName" 
       FunctionName: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager'
       Handler: "lambda_function.lambda_handler"
       Timeout: 700
       Role: !GetAtt 'LambdaRole.Arn'
-      Runtime: python3.6
+      Runtime: python3.7
+      Environment:
+        Variables:
+          PUBLIC_KEY: !Ref "PublicKey"
+          PRIVATE_KEY: !Ref "PrivateKey"
+          ORG_ID: !Ref "OrgId"
+
   # The LambdaRole is very simple for this use case, because it only need to have access to write logs
   # If the lambda is going to access AWS services using boto3, this role must be
   # extended to give lambda the appropriate permissions.
@@ -27,7 +64,7 @@ Resources:
               - sts:AssumeRole
       Path: /
       Policies:
-        - PolicyName: "lambda-logs"
+        - PolicyName: "MongoDBCloudResourceManagerLambdaExecutionPolicy"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -38,3 +75,21 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - iam:CreateAccessKey
+                  - iam:DeleteAccessKey
+                  - iam:UpdateAccessKey
+                  - ssm:PutParameter
+                  - ssm:GetParameter
+                  - ssm:DeleteParameter
+                  - ec2:ImportKeyPair
+                  - ec2:DeleteKeyPair
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:GetSecret
+                  - secretsmanager:ListSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:UpdateSecret
+                Resource:
+                  - '*'

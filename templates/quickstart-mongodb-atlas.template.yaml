@@ -1,14 +1,160 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: MongoDB Atlas AWS CloudFormation Quickstart
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Network Configuration
+      Parameters:
+      - VPC
+    - Label:
+        default: Security Configuration
+      Parameters:
+      - PublicKey
+      - PrivateKey 
+      - OrgId
+    - Label:
+        default: MongoDB Atlas Configuration
+      Parameters:
+      - ProjectName
+      - ClusterName
+      - ClusterRegion
+      - ClusterInstanceSize
+    ParameterLabels:
+      ProjectName:
+        default: atlas-cfn-quickstart
+      ClusterName:
+        default: cluster-1
+      ClusterRegion:
+        default: us-east-1
+      ClusterInstanceSize:
+        default: MongoDB Atlas Instance Size
 Parameters:
+  EnableSecretForApiKey:
+    AllowedValues:
+    - 'true'
+    - 'false'
+    Default: 'false'
+    Description: "Set to true to enable adding an AWS Secret for your MongoDB API Key"
+    Type: String
   PublicKey:
     Description: "Your MongoDB Cloud Public API Key"
-    Type: String 
+    Type: String
+    Default: "PublicKey"
   PrivateKey:
     Description: "Your MongoDB Cloud Private API Key"
-    Type: String 
+    Type: String
+    Default: "PrivateKey"
   OrgId:
     Description: "Your MongoDB Cloud Organization Id"
-    Type: String 
+    Type: String
+    Default: "OrgId"
+  ClusterName:
+    Description: Name of the cluster as it appears in Atlas. Once the cluster is created,
+      its name cannot be changed.
+    Type: String
+    Default: "Cluster-1"
+  ClusterInstanceSize:
+    Default: "M10" 
+    Description: Atlas provides different cluster tiers, each with a default storage capacity and RAM size. The cluster you select is used for all the data-bearing hosts in your cluster tier. See https://docs.atlas.mongodb.com/reference/amazon-aws/#amazon-aws.
+    Type: String
+    AllowedValues:
+    - "M10"
+    - "M20"
+    - "M30"
+    - "M40"
+    - "R40"
+    - "M40_NVME"
+    - "M50"
+    - "R50"
+    - "M50_NVME"
+    - "M60"
+    - "R60"
+    - "M60_NVME"
+    - "M80"
+    - "R80"
+    - "M80_NVME"
+    - "M100"
+    - "M140"
+    - "M200"
+    - "R200"
+    - "M200_NVME"
+    - "M300"
+    - "R300"
+    - "R400"
+    - "M400_NVME"
+    - "R700"
+  ClusterRegion:
+    Default: us-east-1
+    Description: The AWS Region where the Atlas DB Cluster will run.
+    Type: String
+    AllowedValues:
+    - "us-east-1"
+    - "us-east-2"
+    - "ca-central-1"
+    - "us-west-1"
+    - "us-west-2"
+    - "sa-east-1"
+    - "ap-south-1"
+    - "ap-east-2"
+    - "ap-southeast-1"
+    - "ap-southeast-2"
+    - "ap-northeast-1"
+    - "ap-northeast-2"
+    - "eu-central-1"
+    - "eu-west-1"
+    - "eu-north-1"
+    - "eu-west-1"
+    - "eu-west-2"
+    - "eu-west-3"
+    - "eu-south-1"
+    - "me-south-1"
+    - "af-south-1"
+  ClusterMongoDBMajorVersion:
+    Description: The version of MongoDB
+    Type: String
+    Default: "4.4"
+    AllowedValues:
+    - "3.6"
+    - "4.0"
+    - "4.2"
+    - "4.4"
+  ClusterDiskIOPS:
+    Default: '100.0'
+    Description: The AWS Region where the Quick Start S3 bucket (QSS3BucketName) is
+      hosted. When using your own bucket, you must specify this value.
+    Type: Number
+    MaxValue: '10000.0'
+    MinValue: '100.0'
+  QSS3BucketName:
+    AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
+    Default: aws-quickstart
+    Type: String
+    ConstraintDescription: Quick Start bucket name can include numbers, lowercase
+      letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen
+      (-).
+    Description: S3 bucket name for the Quick Start assets. Quick Start bucket name
+      can include numbers, lowercase letters, uppercase letters, and hyphens (-).
+      It cannot start or end with a hyphen (-).
+Conditions:
+  EnableSecretForApiKeyCondition: !Equals 
+  - !Ref EnableSecretForApiKey
+  - 'true'
 Resources:
+  AtlasApiKeySecret:
+    Condition: EnableSecretForApiKeyCondition
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Sub "${AWS::StackName}-ApiKey-Secret"
+      Description: This secret has a hardcoded password in SecretString (use GenerateSecretString instead)
+      #
+      # { "PublicKey" : "xxx", "PrivateKey", "yyy", "OrgId": "zzz" }
+      #
+      SecretString: !Join ['', ['{"PublicKey":"', !Ref "PublicKey",'", "PrivateKey":"', !Ref "PrivateKey", '", "OrgId":"', !Ref "OrgId", '"}'] ]
+      Tags:
+      - Key: mongodb-atlas-quickstart-stack 
+        Value: !Sub "${AWS::StackName}"
   AtlasIAMRole:
     Type: AWS::IAM::Role
     Properties:
@@ -20,38 +166,47 @@ Resources:
             AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
           Action: 'sts:AssumeRole'
   AtlasDeployment:
-    Type: Custom::AtlasDeployment
+    Type: Custom::MongoDBAtlasQuickstart
     DependsOn: AtlasIAMRole
     Properties:
       ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager"
       Name: !Sub "${AWS::StackName}"
-      PublicKey: !Ref "PublicKey"
-      PrivateKey: !Ref "PrivateKey"
-      OrgId: !Ref "OrgId"
+      OrgId: !If
+      - "EnableSecretForApiKeyCondition"
+      - !Join [ "", ["{{resolve:secretsmanager:", !Ref "AtlasApiKeySecret", ":SecretString:OrgId}}"]]   
+      - "NOT_SET"
+      PublicKey: !If 
+      - "EnableSecretForApiKeyCondition"
+      - !Join [ "", ["{{resolve:secretsmanager:", !Ref "AtlasApiKeySecret", ":SecretString:PublicKey}}"]]
+      - "NOT_SET"
+      PrivateKey: !If
+      - "EnableSecretForApiKeyCondition"
+      - !Join [ "", ["{{resolve:secretsmanager:", !Ref "AtlasApiKeySecret", ":SecretString:PrivateKey}}"]]
+      - "NOT_SET"
       BackupRetentionPeriod: 0
-      Plan: 
-        version: 9 
-        project:
-          name: !Sub "${AWS::StackName}"
-        cluster:
-          name: !Sub "${AWS::StackName}"
-          mongoDBMajorVersion: "4.4"
-          providerSettings:
-            providerName: "AWS"
-            instanceSizeName: "M10" 
-            regionName: "US_EAST_1"
-        accessList:
-        - ipAddress: "0.0.0.0/0"
-          comment: "IP address for the world, do NOT do this"
-        - cidrBlock: "203.0.113.0/24"
-          comment: "CIDR block for Application Server B - D"
-        databaseUsers:
-        - username: !GetAtt "AtlasIAMRole.Arn"
-          databaseName: "$external"
-          awsIAMType: "ROLE"
-          roles:
-          - roleName: "readWrite"
-            databaseName: !Sub "${AWS::StackName}"
+      Project:
+        name: !Sub "${AWS::StackName}"
+        orgId: !GetAtt "AtlasDeployment.OrgId"
+      Cluster:
+        name: !Sub "${AWS::StackName}"
+        mongoDBMajorVersion: "4.4"
+        providerSettings:
+          instanceSizeName: !Ref "ClusterInstanceSize" 
+          regionName: !Ref "ClusterRegion"
+      AccessList:
+      - ipAddress: "0.0.0.0/0"
+        comment: "IP address for the world, do NOT do this"
+      - cidrBlock: "203.0.113.0/24"
+        comment: "CIDR block for Application Server B - D"
+      DatabaseUsers:
+      - username: !GetAtt "AtlasIAMRole.Arn"
+        databaseName: "$external"
+        awsIAMType: "ROLE"
+        roles:
+        - roleName: "readWrite"
+          databaseName: !Sub "${AWS::StackName}"
+        scopes:
+        - "CLUSTER"
 Outputs:
   AtlasDeployment:
     Description: "Info on your Atlas deployment"
