@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 # Deploys a CloudFormation stack running the MongoDB Cloud Resource Manager
-STACK_NAME="${1:-mongodb-cloud-resource-manager}"
+STACK_NAME="${1:-mongodb-atlas-resource-provider}"
 echo "STACK_NAME=${STACK_NAME}"
 REGION="${2:-$(aws configure get region)}"
 echo "REGION=${REGION}"
-TARGET="$(git rev-parse --show-toplevel)/templates/mongodbatlas-resource-manager.template.yaml"
+TARGET="$(git rev-parse --show-toplevel)/templates/mongodb-atlas-resource-provider.template.yaml"
 echo "TARGET=${TARGET}"
 EXISTS=$(aws cloudformation describe-stacks --output json --region ${REGION} --stack-name ${STACK_NAME} 2>&1)
 echo "EXISTS=${EXISTS}"

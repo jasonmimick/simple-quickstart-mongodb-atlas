@@ -10,11 +10,11 @@
 
 ROOT="$(git rev-parse --show-toplevel)"
 echo "ROOT:${ROOT}"
-TARGET="${ROOT}/templates/mongodbatlas-resource-manager.template.yaml"
+TARGET="${ROOT}/templates/mongodb-atlas-resource-provider.template.yaml"
 echo "TARGET=${TARGET}"
-LAMBDA_SRC="${2:-${ROOT}/functions/source/MongoDBCloudResourceManager/lambda_function.py}"
+LAMBDA_SRC="${2:-${ROOT}/functions/source/MongoDBAtlasResourceProvider/lambda_function.py}"
 echo "LAMBDA_SRC=${LAMBDA_SRC}"
-LAMBDA_STACK_TEMPLATE="${3:-${ROOT}/templates/common/MongoDBCloudResourceManager_lambda.template.yaml}"
+LAMBDA_STACK_TEMPLATE="${3:-${ROOT}/templates/common/MongoDBAtlasResourceProvider_lambda.template.yaml}"
 echo "LAMBDA_STACK_TEMPLATE=${LAMBDA_STACK_TEMPLATE}"
 CHAR_COUNT=$(wc -c "${LAMBDA_SRC}" | cut -d' ' -f1)
 echo "Can we fit captain?  '${LAMBDA_SRC}' character count: ${CHAR_COUNT}, max 4096!"
@@ -27,23 +27,23 @@ else
 fi
 
 # Freshen our python libs
-rm -rf functions/source/MongoDBCloudResourceManager/package
-mkdir functions/source/MongoDBCloudResourceManager/package
+rm -rf functions/source/MongoDBAtlasResourceProvider/package
+mkdir functions/source/MongoDBAtlasResourceProvider/package
 python3 -m pip install \
- --target functions/source/MongoDBCloudResourceManager/package \
- -r functions/source/MongoDBCloudResourceManager/requirements.txt
+ --target functions/source/MongoDBAtlasResourceProvider/package \
+ -r functions/source/MongoDBAtlasResourceProvider/requirements.txt
 
-pylint functions/source/MongoDBCloudResourceManager/*.py
+pylint functions/source/MongoDBAtlasResourceProvider/*.py
 
 # Zip up the lambda source
-LAMBDA_ZIP="$(pwd)/functions/packages/MongoDBCloudResourceManager.zip"
+LAMBDA_ZIP="$(pwd)/functions/packages/MongoDBAtlasResourceProvider.zip"
 rm "${LAMBDA_ZIP}"
 ls -lR functions/packages
-cd functions/source/MongoDBCloudResourceManager/package
+cd functions/source/MongoDBAtlasResourceProvider/package
 zip -r9 "${LAMBDA_ZIP}" .
 cd -;
 
-cd functions/source/MongoDBCloudResourceManager
+cd functions/source/MongoDBAtlasResourceProvider
 # explicitly adding what we need to make cloudformation register-type work
 zip -g "${LAMBDA_ZIP}" lambda_function.py schema.json template.yml .rpdk-config requirements.txt
 cd -;
@@ -51,7 +51,7 @@ cd -;
 ls -lR functions/packages
 aws s3api put-object \
     --bucket simple-quickstart-mongodb-atlas \
-    --key lambdas/MongoDBCloudResourceManager.zip \
+    --key lambdas/MongoDBAtlasResourceProvider.zip \
     --body "${LAMBDA_ZIP}"
 
 
@@ -59,5 +59,5 @@ aws s3api put-object \
 # Future.
 # When the lambda source crosses the 4096 barrier, enhance this packaging
 # script to zip up the lambda, ship it off to well known s3 bucket, and
-# then update the $TARGET templates/mongodbatlas-resource-manager.template.yaml
+# then update the $TARGET templates/mongodb-atlas-resource-provider.template.yaml
 # to instead point to the s3 bucket.

@@ -97,7 +97,7 @@ def _api(evt, ep, m="GET", d={}, eatable=False):
         secret_name_public, secret_public_key_name = resolve_secretmanager_ref(
             publickey_template_value
         )
-        if secret_name_public is not none:
+        if secret_name_public is not None:
             log.info(f"secret_name_pubic:{secret_name_public}")
             log.info(f"secret_public_key_name={secret_public_key_name}")
             pub = read_secret(secret_name_public).get(
