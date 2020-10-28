@@ -14,7 +14,7 @@ import cfnresponse
 
 
 log = logging.getLogger()
-log.setLevel(logging.DEBUG)
+#log.setLevel(logging.DEBUG)
 
 # check if we deployed with environment variable Atlas API KEY
 DEPLOY_KEY = {
@@ -23,6 +23,17 @@ DEPLOY_KEY = {
     "ORG_ID": os.getenv("ORG_ID", "NOT-FOUND"),
 }
 print(f"Initial startup, DEPLOY_KEY:{DEPLOY_KEY}")
+try {
+    org_resp = __api(DEPLOY_KEY["PUBLIC_KEY"],
+                     DEPLOY_KEY["PRIVATE_KEY"],
+                     f"https://cloud.mongodb.com/api/atlas/v1.0/orgs/{DEPLOY_KEY['ORG_ID]}")
+    log.debug(f"org_resp={org_resp}")
+    VALID_DEPLOY_KEY = (org_resp != None)
+    log.warning(f"Tried to validate DEPLOY_KEY: VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}")
+except Exception as e:
+    log.error(e)
+    log.warning(f"ERROR: {e}")
+    VALID_DEPLOY_KEY = False
 log.info(f"##REMOVE##~~~> DEPLOY_KEY:{DEPLOY_KEY}")
 DS = 30  # Sleep 30 seconds after cluster delete before deleting project
 RESP_DATA = "Data"
@@ -364,7 +375,7 @@ def validate_deploy_apikey():
             public, private, f"https://cloud.mongodb.com/api/atlas/v1.0/orgs/{org_id}"
         )
         log.debug(f"org_resp={org_resp}")
-        VALID_DEPLOY_KEY = org_resp != None
+        VALID_DEPLOY_KEY = (org_resp != None)
         log.warning(
             f"Tried to validate DEPLOY_KEY: VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}"
         )

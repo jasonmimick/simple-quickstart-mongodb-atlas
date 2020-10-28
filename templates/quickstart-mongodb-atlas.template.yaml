@@ -169,7 +169,9 @@ Resources:
     Type: Custom::MongoDBAtlasQuickstart
     DependsOn: AtlasIAMRole
     Properties:
-      ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-cloud-resource-manager"
+      # TODO: We should be able to change the Type to "MongoDB::Atlas::Deployment"
+      # And remove this refernce to the lambda ServiceToken
+      ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-atlas-resource-provider"
       Name: !Sub "${AWS::StackName}"
       OrgId: !If
       - "EnableSecretForApiKeyCondition"
@@ -186,7 +188,10 @@ Resources:
       BackupRetentionPeriod: 0
       Project:
         name: !Sub "${AWS::StackName}"
-        orgId: !GetAtt "AtlasDeployment.OrgId"
+        orgId: !If
+        - "EnableSecretForApiKeyCondition"
+        - !Ref "OrgId"
+        - "NOT_SET"
       Cluster:
         name: !Sub "${AWS::StackName}"
         mongoDBMajorVersion: "4.4"
