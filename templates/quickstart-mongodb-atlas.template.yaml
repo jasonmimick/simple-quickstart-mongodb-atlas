@@ -137,9 +137,6 @@ Parameters:
     Description: S3 bucket name for the Quick Start assets. Quick Start bucket name
       can include numbers, lowercase letters, uppercase letters, and hyphens (-).
       It cannot start or end with a hyphen (-).
-  VPC:
-    Type: AWS::EC2::VPC::Id
-    Description: VPC-ID of your existing Virtual Private Cloud (VPC) which you wish to peer to your new MongoDB Atlas cluster. This is the VPC that your application uses usually.
 Conditions:
   EnableSecretForApiKeyCondition: !Equals 
   - !Ref EnableSecretForApiKey
@@ -206,13 +203,6 @@ Resources:
         comment: "IP address for the world, do NOT do this"
       - cidrBlock: "203.0.113.0/24"
         comment: "CIDR block for Application Server B - D"
-      Peers:
-      - regionName: !Ref "ClusterRegion"
-        accepterRegionName: !Ref "ClusterRegion"
-        awsAccountId: !Sub "${AWS::AccountId}" 
-        containerId: "{CONTAINER-ID}"
-        routeTableCidrBlock: "10.0.0.0/16"
-        vpcId: !Ref "VPC"
       DatabaseUsers:
       - username: !GetAtt "AtlasIAMRole.Arn"
         databaseName: "$external"
