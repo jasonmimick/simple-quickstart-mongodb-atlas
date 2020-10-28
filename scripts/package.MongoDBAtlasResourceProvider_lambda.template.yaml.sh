@@ -48,7 +48,7 @@ cd functions/source/MongoDBAtlasResourceProvider
 zip -g "${LAMBDA_ZIP}" lambda_function.py schema.json template.yml .rpdk-config requirements.txt
 cd -;
 
-ls -lR functions/packages
+ls -ahlR functions/packages
 aws s3api put-object \
     --bucket simple-quickstart-mongodb-atlas \
     --key lambdas/MongoDBAtlasResourceProvider.zip \
