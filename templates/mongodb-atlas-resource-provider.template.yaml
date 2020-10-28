@@ -8,14 +8,13 @@ Description: |
 Parameters:
   QSS3BucketName:
     AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
-    Default: "aws-quickstart"
     Type: "String"
     ConstraintDescription: "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
     Description: "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
     Default: "simple-quickstart-mongodb-atlas"
   CustomProviderZipFileName:
     Type: String
-    Default: "lambdas/MongoDBCloudResourceManager.zip"
+    Default: "lambdas/MongoDBAtlasResourceProvider.zip"
   PublicKey:
     Description: "Optional, deploy a resource manager with a fixed MongoDB Cloud Public API Key"
     Type: String

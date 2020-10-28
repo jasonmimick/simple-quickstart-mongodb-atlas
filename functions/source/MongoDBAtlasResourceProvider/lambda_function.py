@@ -1,86 +1,21 @@
+""" This is the MongoDB Atlas Resource Provider for AWS CloudFormation
+Quickstart - lambda handler
+"""
 # pylint: disable=W1203
+
 # pylint: disable=C0103
 import logging
 from time import sleep
 import traceback
 import os
-import re
 
 import requests
 from requests.auth import HTTPDigestAuth
-import boto3
-from botocore.exceptions import ClientError
 import cfnresponse
 
 
 log = logging.getLogger()
-#log.setLevel(logging.DEBUG)
-
-# check if we deployed with environment variable Atlas API KEY
-DEPLOY_KEY = {
-    "PUBLIC_KEY": os.getenv("PUBLIC_KEY", "NOT-FOUND"),
-    "PRIVATE_KEY": os.getenv("PRIVATE_KEY", "NOT-FOUND"),
-    "ORG_ID": os.getenv("ORG_ID", "NOT-FOUND"),
-}
-print(f"Initial startup, DEPLOY_KEY:{DEPLOY_KEY}")
-try {
-    org_resp = __api(DEPLOY_KEY["PUBLIC_KEY"],
-                     DEPLOY_KEY["PRIVATE_KEY"],
-                     f"https://cloud.mongodb.com/api/atlas/v1.0/orgs/{DEPLOY_KEY['ORG_ID]}")
-    log.debug(f"org_resp={org_resp}")
-    VALID_DEPLOY_KEY = (org_resp != None)
-    log.warning(f"Tried to validate DEPLOY_KEY: VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}")
-except Exception as e:
-    log.error(e)
-    log.warning(f"ERROR: {e}")
-    VALID_DEPLOY_KEY = False
-log.info(f"##REMOVE##~~~> DEPLOY_KEY:{DEPLOY_KEY}")
-DS = 30  # Sleep 30 seconds after cluster delete before deleting project
-RESP_DATA = "Data"
-RP = "ResourceProperties"
-RT = "RequestType"
-PRI = "PhysicalResourceId"
-MDBg = "https://cloud.mongodb.com/api/atlas/v1.0/groups"
-PRID = "X"
-CS = "connectionStrings"
-OK_DELETE_ERRORCODES = [
-    "GROUP_NOT_FOUND",
-    "NOT_IN_GROUP",
-    "CLUSTER_ALREADY_REQUESTED_DELETION",
-    "INVALID_GROUP_ID",
-]
-
-
-def resolve_secretmanager_ref(ref):
-    """
-    {{resolve:secretsmanager:SomeSecretNameFoo:SecretString:PublicKey}}
-    """
-    if type(ref) is str and re.match(r"{{resolve:secretsmanager:.*}}", ref):
-        key_name = ref.split("{{")[1].split("}}")[0].split(":")[-1]
-        secret_name = ref.split("{{")[1].split("}}")[0].split(":")[-3]
-        return (secret_name, key_name)
-    else:
-        return (None, None)
-
-
-def read_secret(secret_name):
-    """ Internal util to read
-    an AWS Secret
-    """
-    session = boto3.session.Session()
-    client = session.client(service_name="secretsmanager")
-
-    try:
-        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    except ClientError as e:
-        # Some error happened here. Log it / handle it / raise it.
-        log.error(f"Error read_secret e:{e}")
-        raise e
-    else:
-        log.info(
-            f"REMOVE==========> get_secret_value_response:{get_secret_value_response}"
-        )
-        return get_secret_value_response
+log.setLevel(logging.DEBUG)
 
 
 def _p(e):
@@ -93,49 +28,10 @@ def _p(e):
 def _api(evt, ep, m="GET", d={}, eatable=False):
     """ Internal wraps api access from event
     """
-    publickey_template_value = evt[RP].get("PublicKey", "")
-    privatekey_template_value = evt[RP].get("PrivateKey", "")
-    log.debug(f"**REMOVE** publickey_template_value:{publickey_template_value}")
-    log.debug(f"**REMOVE** privatekey_template_value:{privatekey_template_value}")
-    if VALID_DEPLOY_KEY:
-        pub = DEPLOY_KEY["PUBLIC_KEY"]
-        pvt = DEPLOY_KEY["PRIVATE_KEY"]
-        log.warning("Override API KEY from deployed Key")
-    elif "resolve:secretsmanager" in publickey_template_value:
-        log.warning(
-            "Detected AWS Secret Manager integration, looking up secret for Atlas API Keys"
-        )
-        secret_name_public, secret_public_key_name = resolve_secretmanager_ref(
-            publickey_template_value
-        )
-        if secret_name_public is not None:
-            log.info(f"secret_name_pubic:{secret_name_public}")
-            log.info(f"secret_public_key_name={secret_public_key_name}")
-            pub = read_secret(secret_name_public).get(
-                secret_public_key_name, "NOT_IN_SECRET"
-            )
-        else:
-            pub = publickey_template_value
-            log.info(f"No secret for PublicKey dectected fallback pub={pub}")
-            log.info(f"read_secret pub={pub}")
-
-        secret_name_private, secret_private_key_name = resolve_secretmanager_ref(
-            publickey_template_value
-        )
-        if secret_name_private is not None:
-            log.info(f"secret_name_private:{secret_name_private}")
-            log.info(f"secret_private_key_name={secret_private_key_name}")
-            pvt = read_secret(secret_name_private).get(secret_private_key_name, "NOT_IN_SECRET")
-            log.info(f"read_secret pvt={pvt}")
-        else:
-            pvt = privatekey_template_value
-            log.info(f"No secret for PrivateKey dectected fallback pvt={pvt}")
-    else:
-        log.warning(
-            "No Secret detected & no DEPLOY_KEY, assume Atlas APIKey values in template request"
-        )
-        pub = publickey_template_value
-        pvt = privatekey_template_value
+    pub = evt[RP].get("PublicKey", "")
+    pvt = evt[RP].get("PrivateKey", "")
+    log.debug(f"**REMOVE** pub:{pub}")
+    log.debug(f"**REMOVE** pvt:{pvt}")
 
     return __api(pub, pvt, ep, m, d, eatable)
 
@@ -169,8 +65,53 @@ def __api(pub, pvt, ep, m="GET", d={}, eatable=False):
         else:
             log.warning(traceback.print_exc())
             raise Exception(j)
-    else:
-        return j
+    return j
+
+
+# check if we deployed with environment variable Atlas API KEY
+def try_load_deploy_key():
+    """ Test out the key we were deployed with
+    and see if it's good
+    """
+    DEPLOY_KEY = {
+        "PUBLIC_KEY": os.getenv("PUBLIC_KEY", "NOT-FOUND"),
+        "PRIVATE_KEY": os.getenv("PRIVATE_KEY", "NOT-FOUND"),
+        "ORG_ID": os.getenv("ORG_ID", "NOT-FOUND"),
+    }
+    print(f"try_load_deploy_key, DEPLOY_KEY:{DEPLOY_KEY}")
+
+    try:
+        org_resp = __api(DEPLOY_KEY["PUBLIC_KEY"],
+                         DEPLOY_KEY["PRIVATE_KEY"],
+                         f"https://cloud.mongodb.com/api/atlas/v1.0/orgs/{DEPLOY_KEY['ORG_ID']}")
+        print(f"org_resp={org_resp}")
+        VALID_DEPLOY_KEY = (org_resp != None)
+        print(f"Tried to validate DEPLOY_KEY:{DEPLOY_KEY}, VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}")
+    except Exception as e:
+        log.error(e)
+        log.warning(f"ERROR: {e}")
+        VALID_DEPLOY_KEY = False
+    return (VALID_DEPLOY_KEY, DEPLOY_KEY)
+
+#VALID_DEPLOY_KEY, DEPLOY_KEY = try_load_deploy_key()
+#log.info(f"##REMOVE##~~~> DEPLOY_KEY:{DEPLOY_KEY}")
+#log.info(f"##REMOVE##~~~> VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}")
+RESP_DATA = "Data"
+RP = "ResourceProperties"
+RT = "RequestType"
+PRI = "PhysicalResourceId"
+MDBg = "https://cloud.mongodb.com/api/atlas/v1.0/groups"
+PRID = "X"
+CS = "connectionStrings"
+OK_DELETE_ERRORCODES = [
+    "GROUP_NOT_FOUND",
+    "NOT_IN_GROUP",
+    "CLUSTER_ALREADY_REQUESTED_DELETION",
+    "INVALID_GROUP_ID",
+]
+
+
+
 
 
 CREATING_PRI = ""
@@ -180,10 +121,15 @@ def create(evt):
     """ Create a new Atlas deployment
     """
     log.info(f"create:evt:{evt}")
+
     p = evt[RP]
-    rt = evt["ResourceType"]
     prj = p["Project"]
-    prj["orgId"] = p.get("OrgId", DEPLOY_KEY.get("OrgId"))
+    if "OrgId" in evt[RP]:
+        # This allows add OrgId from DEPLOY_KEY injected into evt
+        org_id = evt[RP]["OrgId"]
+        log.info(f"Found org_id:{org_id} in event, setting project orgId")
+        prj["orgId"] = org_id
+
     log.info(f"create- try create prj:{prj}")
     pR = _api(evt, f"{MDBg}", m="POST", d=prj)
     resp = {}
@@ -208,12 +154,42 @@ def create(evt):
         resp["accessList"] = _api(
             evt, f"{MDBg}/{pid}/accessList", m="POST", d=p["AccessList"]
         )
+    # Peers
+    if "Peers" in p:
+        container_req = {
+            "atlasCidrBlock" : p["Peers"].get("routeTableCidrBlock","10.0.0.0/16"),
+            "providerName" : "AWS",
+            "regionName" : p["Peers"].get("regionName").upper().replace("-", "_")
+        }
+        log.info(f"try create container container_req:{container_req}")
+        container_resp = _api(evt, f"{MDBg}/{pid}/containers",m="POST",d=container_req)
+        log.info(f"created container: container_resp:{container_resp}")
+        log.warn(f"Need to use this atlasCidrBlock to complete the peering request in the route table.")
+        peering_req = {
+            "accepterRegionName" : p["Peers"]["accepterRegionName"],
+            "awsAccountId" : p["Peers"]["awsAccountId"],
+            "containerId" : container_resp["id"],
+            "providerName" : "AWS",
+            "routeTableCidrBlock" : p["Peers"]["routeTableCidrBlock"],
+            "vpcId" : p["Peers"]["vcpId"],
+        }
+        log.info(f"try create peering peering_req:{peering_req}")
+        peering_resp = _api(evt, f"{MDBg}/{pid}/peers",m="POST",d=container_req)
+        log.info(f"created peering: peering_resp:{container_resp}")
+        # that's it?
     # Finally, cluster since it takes time
     if "Cluster" in p:
         c = p["Cluster"]
-        c.providerName = "AWS"
+        # Set to AWS, obviously
+        c.get("providerSettings", {})["providerName"] = "AWS"
+        aws_region = c["providerSettings"]["regionName"]
+        mdb_region = aws_region.upper().replace("-", "_")
+        log.info(f"Translated aws_region:{aws_region} to mdb_region:{mdb_region}")
+        c["providerSettings"]["regionName"] = mdb_region
+        log.info(f"Attempt to create new cluster:{c}")
         ce = f"{MDBg}/{pid}/clusters"
         cr = _api(evt, ce, m="POST", d=c)
+        log.info("Create cluster response cr:{cr}")
         resp["SrvHost"] = wait_for_cluster(evt, ce, 5)
     resp["project"] = _api(evt, f"{MDBg}/{pid}")
     return {RESP_DATA: resp, PRI: prid}
@@ -229,6 +205,18 @@ def wait_for_cluster(evt, ep, m=1):
         return c.get("srvAddress")
     return wait_for_cluster(evt, ep, 1)
 
+def wait_for_cluster_delete(evt, pid, m=1):
+    """ Wait some mins until the cluster is DELETEd
+       ep should be to groups/{pid} because this will
+       return done when the project clusterCount == 0
+    """
+    log.info(f"{m}min wait_for_cluster_delete -- (condition checked: project.clusterCount==0) ")
+    sleep(m * 60)
+    p = _api(evt, f"{MDBg}/{pid}")
+    lgo.info(f"wait_for_cluster_delete p:{p}")
+    if p.get("clusterCount", "NOT-FOUND") == 0:
+        return p
+    return wait_for_cluster(evt, pid, 1)
 
 def update(evt):
     """ Handle the update event
@@ -263,7 +251,8 @@ def delete(evt):
     potential_pid = _p(evt)
     if "LATEST" in potential_pid:
         log.info(f"Broken deployment invalid id format: {potential_pid}. Cleaning up")
-        # Note - we just return without error here, this will "clean up" the cfn resource on the AWS-side
+        # Note - we just return without error here, this will
+        # "clean up" the cfn resource on the AWS-side
         # we don't have anything to clean up on the MongoDB side
         return {
             RESP_DATA: {"Message": "Cleaning up invalid id resource"},
@@ -277,20 +266,20 @@ def delete(evt):
 
     if "id" not in prj:
         raise Exception(f"No id in prj, this should not ever happen {prj}")
-    i = prj["id"]
+    pid = prj["id"]
     if int(prj["clusterCount"]) > 0:
-        cd = _api(evt, f"{MDBg}/{i}/clusters/{name}", m="DELETE", eatable=True)
+        cd = _api(evt, f"{MDBg}/{pid}/clusters/{name}", m="DELETE", eatable=True)
         log.info(f"cluster delete response cd:{cd}")
         # This means that we really did just delete the cluster and should sleep
         # a bit before the api call to delete the group. We might have gotten an "ok"
         # error trying to delete the cluster because it's already been deleted
         try:
-            log.warning(f"deleted cluster, sleeping {DS}")
-            sleep(DS)
+            log.warning("deleted cluster - need to wait before cleanup project....")
+            wait_for_cluster_delete(evt, pid, 1)
         except Exception as e:
             log.warning(f"exp sleeping:{e}")
     try:
-        r = _api(evt, f"{MDBg}/{i}", m="DELETE", eatable=True)
+        r = _api(evt, f"{MDBg}/{pid}", m="DELETE", eatable=True)
         log.info(f"DELETE project r:{r}")
         return {RESP_DATA: r, PRI: evt[PRI]}
     except Exception as e:
@@ -299,105 +288,22 @@ def delete(evt):
 
 
 fns = {"Create": create, "Update": update, "Delete": delete}
-VALID_DEPLOY_KEY = False
-
-
-def validate_deploy_apikey():
-    """Check and see if the apikey deployed via the
-    environment variables into this function is valid.
-    This will also try to lookup the key from an AWS Secret,
-    depending on the reference (from cloudformation).
-    """
-    try:
-        log.debug(f"DEPLOY_KEY:{DEPLOY_KEY}")
-        try_public = DEPLOY_KEY["PUBLIC_KEY"]
-        try_private = DEPLOY_KEY["PRIVATE_KEY"]
-        try_org_id = DEPLOY_KEY["ORG_ID"]
-        log.debug(f"{try_public} {try_private}")
-        public = "INITIAL-VALUE-PUBLIC"
-        private = "INITIAL-VALUE-PRIVATE"
-        if "resolve:secretsmanager" in try_public:
-            secret_name_public, secret_public_key_name = resolve_secretmanager_ref(
-                try_public
-            )
-            log.info(
-                f"secret_name_pubic:{secret_name_public}, secret_public_key_name={secret_public_key_name}"
-            )
-            public = read_secret(secret_name_public).get(
-                secret_public_key_name, "NOT_IN_SECRET"
-            )
-        else:
-            public = try_public
-            log.debug(
-                f"No AWS Secret reference in DEPLOY_KEY['PUBLIC_KEY'] detected, value: {public}"
-            )
-
-        if "resolve:secretsmanager" in try_private:
-            secret_name_private, secret_private_key_name = resolve_secretmanager_ref(
-                try_private
-            )
-            log.info(
-                f"secret_name_private:{secret_name_private}, secret_private_key_name={secret_private_key_name}"
-            )
-            private = read_secret(secret_name_private).get(
-                secret_private_key_name, "NOT_IN_SECRET"
-            )
-        else:
-            private = try_private
-            log.debug(
-                f"No AWS Secret reference in DEPLOY_KEY['PRIVATE_KEY'] detected, value: {private}"
-            )
-
-        if "resolve:secretsmanager" in try_org_id:
-            secret_name_org_id, secret_org_id_name = resolve_secretmanager_ref(
-                try_org_id
-            )
-            log.info(
-                f"secret_name_org_id:{secret_name_org_id}, secret_org_id_name={secret_org_id_name}"
-            )
-            org_id = read_secret(secret_name_org_id).get(
-                secret_org_id_name, "NOT_IN_SECRET"
-            )
-            # I'm sorry those are terrible names for variables
-        else:
-            org_id = try_org_id
-            log.debug(
-                f"No AWS Secret reference in DEPLOY_KEY['ORG_ID]' detected, value: {org_id}"
-            )
-
-        log.debug(f"~~~>  public:{public}, private:{private} org_id:{org_id}")
-        # Next line will attempt to GET /groups with the key we just attempted to wrangle with
-        # This should return a valid dict[] with the /groups response, if not, or error
-        # then VALID_DEPLOY_KEY will set to False and then not override apikey lookup
-        # in the _api function above which expects to parse the apikey out of the
-        # cloudformation Create/update/delete request event payload.
-        org_resp = __api(
-            public, private, f"https://cloud.mongodb.com/api/atlas/v1.0/orgs/{org_id}"
-        )
-        log.debug(f"org_resp={org_resp}")
-        VALID_DEPLOY_KEY = (org_resp != None)
-        log.warning(
-            f"Tried to validate DEPLOY_KEY: VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}"
-        )
-        if VALID_DEPLOY_KEY:  # now update local DEPLOY_KEY with resovled values
-            DEPLOY_KEY = {
-                "PUBLIC_KEY": public,
-                "PRIVATE_KEY": private,
-                "ORG_ID": org_id,
-            }
-            log.debug(f"Update DEPLOY_KEY={DEPLOY_KEY}")
-        else:
-            log.debug(f"Did NOT, yes, 'NOT' Update DEPLOY_KEY={DEPLOY_KEY}")
-    except Exception as e:
-        log.error(e)
-        log.warning(f"ERROR: {e}")
-
 
 def lambda_handler(evt, ctx):
+    """ Main handler
+    """
     log.info(f"got evt {evt}")
     rd = {}
     try:
         # lookup name of right function and call it, create/update/delete
+        VALID_DEPLOY_KEY, DEPLOY_KEY = try_load_deploy_key()
+        log.info(f"lambda_handler - try-load--> DEPLOY_KEY:{DEPLOY_KEY}, VALID_DEPLOY_KEY:{VALID_DEPLOY_KEY}")
+        if VALID_DEPLOY_KEY:
+            log.debug("Injecting deployed apikey into event payload")
+            evt[RP]["PublicKey"] = DEPLOY_KEY["PUBLIC_KEY"]
+            evt[RP]["PrivateKey"] = DEPLOY_KEY["PRIVATE_KEY"]
+            evt[RP]["OrgId"] = DEPLOY_KEY["ORG_ID"]
+        # now call the right handler function
         rd = fns[evt[RT]](evt)
         log.info(f"rd:{rd}")
         if PRI not in rd:
@@ -412,6 +318,8 @@ def lambda_handler(evt, ctx):
 
 
 def test_entrypoint(evt, ctx):
+    """ Not really used yet, needs testing!
+    """
     log.info(f"test_entrypoint! does it work? {evt} {ctx}")
     cfnresponse.send(
         evt, ctx, cfnresponse.FAILED, {"error": "Not implemented, yet"}, None
