@@ -32,12 +32,12 @@ MongoDB Atlas API keys (read from mongocli config)
 source <(./scripts/export-mongocli-config.py)
 ```
 
-## Deploy the MongoDB Cloud Resource Manager into AWS
+## Deploy the MongoDB Atlas Resource Provider into AWS
 
 This quickstart is powered by a lightweight lambda-controller
 which connects your AWS CloudFormation control plane directly into
-the MongoDB Cloud. Run this command to install the Resource Manager 
-into the `AWS_REGION` of your choice before running the quickstart.
+the MongoDB Cloud. Run this command to install the MongoDB Atlas
+Resource Provider into the `AWS_REGION` of your choice before running the quickstart.
 
 ```bash
 aws cloudformation create-stack \
@@ -78,6 +78,7 @@ aws cloudformation describe-stacks --stack-name ${STACK_NAME} | jq -r '.Stacks[0
 ```
 
 Currently there are 3 outputs:
+TODO: *NEEDS UPDATE*
 ```
 [
   {
