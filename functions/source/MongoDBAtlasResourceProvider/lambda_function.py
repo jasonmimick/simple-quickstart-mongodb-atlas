@@ -209,18 +209,18 @@ def handle_cluster(evt):
         prj["orgId"] = org_id
 
     log.info(f"handle_cluster input from template prj:{prj}")
-    try_id = prg.get("id","NOT-FOUND")
+    try_id = prj.get("id","NOT-FOUND")
     if try_id == "NOT-FOUND":
         raise Execption("Did not find project id in input parameters")
     if "project" in try_id:     # parse our pid
-        pid = tri_id.split("project")[1].split(":")[1]
+        pid = try_id.split(",")[1].split(":")[1]
         log.info(f"lookedup AWS org:project to get pid:{pid}")
         prj["id"]=pid
     pid = prj["id"]
     pR = _api(evt, f"{MDBg}/{pid}")
     resp = {}
     pid = pR["id"]
-    prid = f"org:{pR['orgId']},project:{pid},cluster:{TBD}"
+    prid = f"org:{pR['orgId']},project:{pid},cluster:TBD"
     resp[PRI] = prid
     CREATING_PRI = prid
     # Finally, cluster since it takes time
@@ -235,8 +235,9 @@ def handle_cluster(evt):
         log.info(f"Attempt to create new cluster:{c}")
         ce = f"{MDBg}/{pid}/clusters"
         cr = _api(evt, ce, m="POST", d=c)
-        log.info("Create cluster response cr:{cr}")
+        log.info(f"Create cluster response cr:{cr}")
         prid = f"org:{pR['orgId']},project:{pid},cluster:{cr['id']}"
+        log.info("prid:{prid}")
         resp["SrvHost"] = wait_for_cluster(evt, ce, 5)
     resp["project"] = _api(evt, f"{MDBg}/{pid}")
     return {RESP_DATA: resp, PRI: prid}
