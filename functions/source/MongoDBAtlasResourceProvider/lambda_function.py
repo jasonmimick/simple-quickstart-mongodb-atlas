@@ -111,17 +111,51 @@ OK_DELETE_ERRORCODES = [
 ]
 
 
-
-
-
 CREATING_PRI = ""
+
+
+def validate_resource_type(rt, target_type):
+    """ Returns True if the rt is a valid target_type
+    For example, both Custom::AtlasDeployment
+    and MongoDB::Atlas::Deployment are valid ATLAS_DEPLOYMENT_RESOURCE_TYPE's
+    """
+    parts = rt.split("::")
+    log.info(f"validate_resource_type rt:{rt}, parts:{parts}, target_type:{target_type}")
+    if not len(parts) > 0:
+        return False
+    if parts[0] == "Custom":
+        if not 'Atlas' in parts[1]:
+            return False
+        this_type = parts[1].split("Atlas")[1]
+        log.info(f"Custom: this_type:{this_type}")
+        if this_type == target_type:
+            return True
+    elif parts[0] == "MongoDB":
+        if not parts[1]=="Atlas":
+            return False
+        this_type = parts[2]
+        log.info(f"MongoDB::Atlas:: - strong type: this_type:{this_type}")
+        if this_type == target_type:
+            return True
+    return False
 
 
 def create(evt):
     """ Create a new Atlas deployment
     """
     log.info(f"create:evt:{evt}")
+    resource_type = evt["ResourceType"]
+    log.info(f"create:resource_type:{resource_type}")
+    if validate_resource_type(resource_type,"Deployment"):
+        return handle_deployment(evt)
+    elif validate_resource_type(resource_type,"Cluster"):
+        return handle_cluster(evt)
+    elif validate_resource_type(resource_type,"Peer"):
+        return handle_peer(evt)
 
+    # what to do else?
+
+def handle_deployment(evt):
     p = evt[RP]
     prj = p["Project"]
     if "OrgId" in evt[RP]:
@@ -149,34 +183,39 @@ def create(evt):
     )
     for k in ecpa:
         resp[f"cloudProviderAccess-{k}"] = ecpa[k]
-    # Access List (ip, peering, etc)
+    # Access List (ip - peering and privatelink are separate resources)
     if "AccessList" in p:
-        resp["accessList"] = _api(
-            evt, f"{MDBg}/{pid}/accessList", m="POST", d=p["AccessList"]
-        )
-    # Peers
-    if "Peers" in p:
-        container_req = {
-            "atlasCidrBlock" : p["Peers"].get("routeTableCidrBlock","10.0.0.0/16"),
-            "providerName" : "AWS",
-            "regionName" : p["Peers"].get("regionName").upper().replace("-", "_")
-        }
-        log.info(f"try create container container_req:{container_req}")
-        container_resp = _api(evt, f"{MDBg}/{pid}/containers",m="POST",d=container_req)
-        log.info(f"created container: container_resp:{container_resp}")
-        log.warn(f"Need to use this atlasCidrBlock to complete the peering request in the route table.")
-        peering_req = {
-            "accepterRegionName" : p["Peers"]["accepterRegionName"],
-            "awsAccountId" : p["Peers"]["awsAccountId"],
-            "containerId" : container_resp["id"],
-            "providerName" : "AWS",
-            "routeTableCidrBlock" : p["Peers"]["routeTableCidrBlock"],
-            "vpcId" : p["Peers"]["vcpId"],
-        }
-        log.info(f"try create peering peering_req:{peering_req}")
-        peering_resp = _api(evt, f"{MDBg}/{pid}/peers",m="POST",d=container_req)
-        log.info(f"created peering: peering_resp:{container_resp}")
-        # that's it?
+        access_list_req = p["AccessList"]
+        entry_type = access_list_req["accessListType"]
+        if entry_type == "NONE":
+            log.warn(f"Found NONE AccessListType, skipping.... access_list_req:{access_list_req}")
+        else:
+            entry_value = access_list_req["accessListValue"]
+            ac = { entry_type : entry_value,
+                   "comment" : access_list_req["Comment"] }
+            log.info(f"access list attempt create ac:{ac}")
+            resp["accessList"] = _api(evt, f"{MDBg}/{pid}/accessList", m="POST", d=ac)
+    resp["project"] = _api(evt, f"{MDBg}/{pid}")
+    return {RESP_DATA: resp, PRI: prid}
+
+
+def handle_cluster(evt):
+    p = evt[RP]
+    prj = p["Project"]
+    if "OrgId" in evt[RP]:
+        # This allows add OrgId from DEPLOY_KEY injected into evt
+        org_id = evt[RP]["OrgId"]
+        log.info(f"Found org_id:{org_id} in event, setting project orgId")
+        prj["orgId"] = org_id
+
+    log.info(f"handle_cluster input from template prj:{prj}")
+    pid = prj["id"]
+    pR = _api(evt, f"{MDBg}/{pid}")
+    resp = {}
+    pid = pR["id"]
+    prid = f"org:{pR['orgId']},project:{pid},cluster:{TBD}"
+    resp[PRI] = prid
+    CREATING_PRI = prid
     # Finally, cluster since it takes time
     if "Cluster" in p:
         c = p["Cluster"]
@@ -190,9 +229,11 @@ def create(evt):
         ce = f"{MDBg}/{pid}/clusters"
         cr = _api(evt, ce, m="POST", d=c)
         log.info("Create cluster response cr:{cr}")
+        prid = f"org:{pR['orgId']},project:{pid},cluster:{cr['id']}"
         resp["SrvHost"] = wait_for_cluster(evt, ce, 5)
     resp["project"] = _api(evt, f"{MDBg}/{pid}")
     return {RESP_DATA: resp, PRI: prid}
+
 
 
 def wait_for_cluster(evt, ep, m=1):
@@ -217,6 +258,58 @@ def wait_for_cluster_delete(evt, pid, m=1):
     if p.get("clusterCount", "NOT-FOUND") == 0:
         return p
     return wait_for_cluster(evt, pid, 1)
+
+
+def handle_peers(evt):
+    p = evt[RP]
+    prj = p["Project"]
+    if "OrgId" in evt[RP]:
+        # This allows add OrgId from DEPLOY_KEY injected into evt
+        org_id = evt[RP]["OrgId"]
+        log.info(f"Found org_id:{org_id} in event, setting project orgId")
+        prj["orgId"] = org_id
+
+    log.info(f"handle_peers input from template prj:{prj}")
+    pid = prj["id"]
+    pR = _api(evt, f"{MDBg}/{pid}")
+    resp = {}
+    pid = pR["id"]
+    prid = { "org" : pR['orgId'],
+             "project" : pid,
+             "container" : "TBD",
+             "peer": "TBD"
+    }
+    resp[PRI] = str(prid)
+    if "Peers" in p:
+        for peer_req in p['Peers']:
+            log.info(f"try adding peering: peer_req:{peer_req}")
+            container_req = {
+                "atlasCidrBlock" : peer_req.get("routeTableCidrBlock","10.0.0.0/16"),
+                "providerName" : "AWS",
+                "regionName" : peer_req.get("regionName").upper().replace("-", "_")
+            }
+            log.info(f"try create container container_req:{container_req}")
+            container_resp = _api(evt, f"{MDBg}/{pid}/containers",m="POST",d=container_req)
+            log.info(f"created container: container_resp:{container_resp}")
+            log.warn(f"Need to use this atlasCidrBlock to complete the peering request in the route table.")
+            peering_req = {
+                "accepterRegionName" : peer_req["accepterRegionName"],
+                "awsAccountId" : peer_req["awsAccountId"],
+                "containerId" : container_resp["id"],
+                "providerName" : "AWS",
+                "routeTableCidrBlock" : peer_req["routeTableCidrBlock"],
+                "vpcId" : peer_req["vcpId"],
+            }
+            log.info(f"try create peering peering_req:{peering_req}")
+            peering_resp = _api(evt, f"{MDBg}/{pid}/peers",m="POST",d=container_req)
+            log.info(f"created peering: peering_resp:{container_resp}")
+            prid["container"]=container_resp['id']
+            prid["peer"]=peering_resp['id']
+            resp[PRI] = str(prid)
+            log.info(f"prid:{prid}")
+    return {RESP_DATA: resp, PRI: str(prid)}
+
+
 
 def update(evt):
     """ Handle the update event
