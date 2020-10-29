@@ -3,7 +3,8 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: |
   The MongoDB Atlas Resource Provider for AWS CloudFormation. 
   This is a lambda function which provides a custom endpoint for 
-  CloudFormation to manage instances of the MongoDB Atlas AWS Quickstart.
+  CloudFormation to manage MongoDB Atlas Resource. The MongoDB Atlas 
+  AWS Quickstart is powered by this resource provider.
   See, http://docs.mongodb.com/quickstarts/aws
 Parameters:
   QSS3BucketName:

@@ -209,6 +209,13 @@ def handle_cluster(evt):
         prj["orgId"] = org_id
 
     log.info(f"handle_cluster input from template prj:{prj}")
+    try_id = prg.get("id","NOT-FOUND")
+    if try_id == "NOT-FOUND":
+        raise Execption("Did not find project id in input parameters")
+    if "project" in try_id:     # parse our pid
+        pid = tri_id.split("project")[1].split(":")[1]
+        log.info(f"lookedup AWS org:project to get pid:{pid}")
+        prj["id"]=pid
     pid = prj["id"]
     pR = _api(evt, f"{MDBg}/{pid}")
     resp = {}

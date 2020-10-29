@@ -8,6 +8,7 @@ Metadata:
         default: Network Configuration
       Parameters:
       - VPC
+      - AccessList
     - Label:
         default: Security Configuration
       Parameters:
@@ -120,13 +121,6 @@ Parameters:
     - "4.0"
     - "4.2"
     - "4.4"
-  ClusterDiskIOPS:
-    Default: '100.0'
-    Description: The AWS Region where the Quick Start S3 bucket (QSS3BucketName) is
-      hosted. When using your own bucket, you must specify this value.
-    Type: Number
-    MaxValue: '10000.0'
-    MinValue: '100.0'
   QSS3BucketName:
     AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
     Default: aws-quickstart
@@ -137,6 +131,23 @@ Parameters:
     Description: S3 bucket name for the Quick Start assets. Quick Start bucket name
       can include numbers, lowercase letters, uppercase letters, and hyphens (-).
       It cannot start or end with a hyphen (-).
+  AccessListType:
+    Description: The kind of access list entry for this quickstart, if any
+    Type: String
+    Default: "NONE"
+    AllowedValues:
+    - "NONE"
+    - "ipAddress"
+    - "cidrBlock"
+    - "awsSecurityGroup"
+  AccessListValue:
+    Type: String
+    Description: Value for access list item formatted based on the AccessListType
+    Default: ""
+  AccessListDeleteAfterDate:
+    Type: String
+    Description: Not sure how to properly type this for ISO 8601
+    Default: "NEVER"
 Conditions:
   EnableSecretForApiKeyCondition: !Equals 
   - !Ref EnableSecretForApiKey
@@ -166,8 +177,55 @@ Resources:
             AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
           Action: 'sts:AssumeRole'
   AtlasDeployment:
-    Type: Custom::MongoDBAtlasQuickstart
+    Type: Custom::AtlasDeployment
     DependsOn: AtlasIAMRole
+    Properties:
+      # TODO: We should be able to change the Type to "MongoDB::Atlas::Deployment"
+      # And remove this refernce to the lambda ServiceToken
+      ServiceToken: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mongodb-atlas-resource-provider"
+      Name: !Sub "${AWS::StackName}"
+      OrgId: !If
+      - "EnableSecretForApiKeyCondition"
+      - !Join [ "", ["{{resolve:secretsmanager:", !Ref "AtlasApiKeySecret", ":SecretString:OrgId}}"]]   
+      - !Ref "OrgId" 
+      PublicKey: !If 
+      - "EnableSecretForApiKeyCondition"
+      - !Join [ "", ["{{resolve:secretsmanager:", !Ref "AtlasApiKeySecret", ":SecretString:PublicKey}}"]]
+      - !Ref "PublicKey"
+      PrivateKey: !If
+      - "EnableSecretForApiKeyCondition"
+      - !Join [ "", ["{{resolve:secretsmanager:", !Ref "AtlasApiKeySecret", ":SecretString:PrivateKey}}"]]
+      - !Ref "PrivateKey"
+      BackupRetentionPeriod: 0
+      Project:
+        name: !Sub "${AWS::StackName}"
+        orgId: !If
+        - "EnableSecretForApiKeyCondition"
+        - !Ref "OrgId"
+        - "NOT_SET"
+      Cluster:
+        name: !Sub "${AWS::StackName}"
+        mongoDBMajorVersion: "4.4"
+        providerSettings:
+          instanceSizeName: !Ref "ClusterInstanceSize" 
+          regionName: !Ref "ClusterRegion"
+      AccessList:
+        accessListType: !Ref "AccessListType"
+        accessListValue: !Ref "AccessListValue"
+        comment: "mongodb-atlas-resource-provider access list entry"
+      DatabaseUsers:
+      - username: !GetAtt "AtlasIAMRole.Arn"
+        databaseName: "$external"
+        awsIAMType: "ROLE"
+        roles:
+        - roleName: "readWrite"
+          databaseName: !Sub "${AWS::StackName}"
+        scopes:
+        - name: !Sub "${AWS::StackName}"
+          type: "CLUSTER"
+  AtlasCluster:
+    Type: Custom::AtlasCluster
+    DependsOn: AtlasDeployment
     Properties:
       # TODO: We should be able to change the Type to "MongoDB::Atlas::Deployment"
       # And remove this refernce to the lambda ServiceToken
@@ -188,31 +246,13 @@ Resources:
       BackupRetentionPeriod: 0
       Project:
         name: !Sub "${AWS::StackName}"
-        orgId: !If
-        - "EnableSecretForApiKeyCondition"
-        - !Ref "OrgId"
-        - "NOT_SET"
+        orgId: !Join [ "", ["{{resolve:secretsmanager:", !Ref "Secret", ":SecretString:OrgId}}"]]   
       Cluster:
         name: !Sub "${AWS::StackName}"
         mongoDBMajorVersion: "4.4"
         providerSettings:
           instanceSizeName: !Ref "ClusterInstanceSize" 
           regionName: !Ref "ClusterRegion"
-      AccessList: 
-      - ipAddress: "0.0.0.0/0"
-        comment: "IP address for the world, do NOT do this"
-      - cidrBlock: "203.0.113.0/24"
-        comment: "CIDR block for Application Server B - D"
-      DatabaseUsers:
-      - username: !GetAtt "AtlasIAMRole.Arn"
-        databaseName: "$external"
-        awsIAMType: "ROLE"
-        roles:
-        - roleName: "readWrite"
-          databaseName: !Sub "${AWS::StackName}"
-        scopes:
-        - name: !Sub "${AWS::StackName}"
-          type: "CLUSTER"
 Outputs:
   AtlasDeployment:
     Description: "Info on your Atlas deployment"

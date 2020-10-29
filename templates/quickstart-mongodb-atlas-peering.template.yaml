@@ -121,13 +121,6 @@ Parameters:
     - "4.0"
     - "4.2"
     - "4.4"
-  ClusterDiskIOPS:
-    Default: '100.0'
-    Description: The AWS Region where the Quick Start S3 bucket (QSS3BucketName) is
-      hosted. When using your own bucket, you must specify this value.
-    Type: Number
-    MaxValue: '10000.0'
-    MinValue: '100.0'
   QSS3BucketName:
     AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
     Default: aws-quickstart
@@ -250,6 +243,7 @@ Resources:
       BackupRetentionPeriod: 0
       Project:
         name: !Sub "${AWS::StackName}"
+        id: !Ref "AtlasDeployment"
         orgId: !If
         - "EnableSecretForApiKeyCondition"
         - !Ref "OrgId"
@@ -282,6 +276,7 @@ Resources:
       - "NOT_SET"
       Project:
         name: !Sub "${AWS::StackName}"
+        id: !Ref "AtlasDeployment"
         orgId: !If
         - "EnableSecretForApiKeyCondition"
         - !Ref "OrgId"
