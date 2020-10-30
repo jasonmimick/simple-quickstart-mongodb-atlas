@@ -35,6 +35,7 @@ python3 -m pip install \
 
 pylint functions/source/MongoDBAtlasResourceProvider/*.py
 
+mkdir -p functions/packages
 # Zip up the lambda source
 LAMBDA_ZIP="$(pwd)/functions/packages/MongoDBAtlasResourceProvider.zip"
 rm "${LAMBDA_ZIP}"

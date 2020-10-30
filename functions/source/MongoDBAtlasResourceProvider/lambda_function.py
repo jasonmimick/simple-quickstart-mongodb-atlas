@@ -150,8 +150,8 @@ def create(evt):
         return handle_deployment(evt)
     elif validate_resource_type(resource_type,"Cluster"):
         return handle_cluster(evt)
-    elif validate_resource_type(resource_type,"Peer"):
-        return handle_peer(evt)
+    elif validate_resource_type(resource_type,"Peers"):
+        return handle_peers(evt)
 
     # what to do else?
 
@@ -268,6 +268,10 @@ def wait_for_cluster_delete(evt, pid, m=1):
     return wait_for_cluster(evt, pid, 1)
 
 
+def handle_peers_update(evt):
+    log.info("handle_peers_update ---")
+    return handle_peers(evt)
+
 def handle_peers(evt):
     p = evt[RP]
     prj = p["Project"]
@@ -328,6 +332,12 @@ def update(evt):
     r = {PRI: evt[PRI]}
     r[RESP_DATA] = {}
     pid = prj["id"]
+    resource_type = evt["ResourceType"]
+    log.info(f"create:resource_type:{resource_type}")
+
+    if validate_resource_type(resource_type,"Peers"):
+      return handle_peers_update(evt)
+
     if int(prj["clusterCount"]) > 0:
         c = _api(evt, f"{MDBg}/{pid}/clusters/{evt[RP]['Name']}")
         r[RESP_DATA]["SrvHost"] = c.get("srvAddress", c.get("stateName"))
