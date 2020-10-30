@@ -17,13 +17,49 @@ import cfnresponse
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 
+def make_PRI(kind_id_pair_list=[]):
+    """ Make correct forrmatted PhysicalResourceId
+    append to pri if you pass it in.
+    For example,
+    [ ("project","123"), ("cluster","456"), ... ]
+    returns:
+    "project:123,cluster:456,..."
+    """
+    pri = ','.join(f"{kind}:{id}" for (kind,id) in kind_id_pair_list)
+    log.debug(f"make_PRI: kind_id_pair_list={kind_id_pair_list}, pri={pri}")
+    return pri
+
+def parse_id_from_physical_resource_id(pri, kind=None):
+    """ We store PRI AWS CFN 'PhysicalResourceId' formatted with the
+    MongoDB Atlas "id" and also the type of resource, for example:
+    project:12354, project:212332,cluster:94872736, project:12345,peer:9439373723
+    When need, like for cluster the parent id is first. So you can always
+    fetch the "id" of "this" resource by splitting on comma and grab the last piece.
+    """
+    if kind == None:
+        this_id_info = pri.split(',')[-1]
+    else:
+        this_id_info = ""
+        parts = pri.split(",")
+        for part in parts:
+            (k, i) = part.split(":")
+            if k == kind:
+                this_id_info = part
+    log.debug(f"parse_id_from_physical_resource_id pri={pri}, kind={kind}, this_id_info={this_id_info}")
+    if ":" not in this_id_info:
+        log.warn("Invalid id format - no ':' in id!")
+        return this_id_info
+    (this_kind, this_id) = this_id_info.split(":")
+    if this_kind == kind:
+        return this_id
+    else:
+        log.error(f"wrong kind! this_kind:{this_kind}")
+        return None
 
 def _p(e):
-    """ Internal: pull a projectId from a formatted Resource ID
-    TODO: NEED TO DOCUMENT THIS!
+    """ Internal: pull a projectId from a Pysical Resource ID
     """
-    return e[PRI].split("-")[-1].split(",")[-1].split(":")[-1]
-
+    return parse_id_from_physical_resource_id(e[PRI], "project")
 
 def _api(evt, ep, m="GET", d={}, eatable=False):
     """ Internal wraps api access from event
@@ -168,7 +204,7 @@ def handle_deployment(evt):
     pR = _api(evt, f"{MDBg}", m="POST", d=prj)
     resp = {}
     pid = pR["id"]
-    prid = f"org:{pR['orgId']},project:{pid}"
+    prid = make_PRI([("project",pid)])
     resp[PRI] = prid
     CREATING_PRI = prid
     # Database Users
@@ -200,7 +236,10 @@ def handle_deployment(evt):
 
 
 def handle_cluster(evt):
+
     p = evt[RP]
+
+    # Lookup project reference
     prj = p["Project"]
     if "OrgId" in evt[RP]:
         # This allows add OrgId from DEPLOY_KEY injected into evt
@@ -212,15 +251,16 @@ def handle_cluster(evt):
     try_id = prj.get("id","NOT-FOUND")
     if try_id == "NOT-FOUND":
         raise Execption("Did not find project id in input parameters")
-    if "project" in try_id:     # parse our pid
-        pid = try_id.split(",")[1].split(":")[1]
-        log.info(f"lookedup AWS org:project to get pid:{pid}")
-        prj["id"]=pid
-    pid = prj["id"]
+    pid = parse_id_from_physical_resource_id(try_id,"project")
+    log.info(f"lookedup AWS org:project to get pid:{pid}")
+    prj["id"]=pid
     pR = _api(evt, f"{MDBg}/{pid}")
     resp = {}
     pid = pR["id"]
-    prid = f"org:{pR['orgId']},project:{pid},cluster:TBD"
+
+
+    # Note - seeding the pysical resource id with cluster "tbd"
+    prid = make_PRI([ ("project",pid), ("cluster", "TBD") ])
     resp[PRI] = prid
     CREATING_PRI = prid
     # Finally, cluster since it takes time
@@ -236,8 +276,8 @@ def handle_cluster(evt):
         ce = f"{MDBg}/{pid}/clusters"
         cr = _api(evt, ce, m="POST", d=c)
         log.info(f"Create cluster response cr:{cr}")
-        prid = f"org:{pR['orgId']},project:{pid},cluster:{cr['id']}"
-        log.info("prid:{prid}")
+        # Note - fix up the PRI physical resource id since cluster created
+        prid = make_PRI( [ ("project",pid), ("cluster",cr['id']) ] )
         resp["SrvHost"] = wait_for_cluster(evt, ce, 5)
     resp["project"] = _api(evt, f"{MDBg}/{pid}")
     return {RESP_DATA: resp, PRI: prid}
@@ -273,7 +313,11 @@ def handle_peers_update(evt):
     return handle_peers(evt)
 
 def handle_peers(evt):
+
+
     p = evt[RP]
+
+    # Lookup project reference
     prj = p["Project"]
     if "OrgId" in evt[RP]:
         # This allows add OrgId from DEPLOY_KEY injected into evt
@@ -281,45 +325,57 @@ def handle_peers(evt):
         log.info(f"Found org_id:{org_id} in event, setting project orgId")
         prj["orgId"] = org_id
 
-    log.info(f"handle_peers input from template prj:{prj}")
-    pid = prj["id"]
+    log.info(f"handle_cluster input from template prj:{prj}")
+    try_id = prj.get("id","NOT-FOUND")
+    if try_id == "NOT-FOUND":
+        raise Execption("Did not find project id in input parameters")
+    pid = parse_id_from_physical_resource_id(try_id,"project")
+    log.info(f"lookedup AWS org:project to get pid:{pid}")
+    prj["id"]=pid
     pR = _api(evt, f"{MDBg}/{pid}")
     resp = {}
     pid = pR["id"]
-    prid = { "org" : pR['orgId'],
-             "project" : pid,
-             "container" : "TBD",
-             "peer": "TBD"
-    }
-    resp[PRI] = str(prid)
+
+    # Note - seeding the pysical resource id with peer "tbd"
+    prid = make_PRI([ ("project",pid), ("peer", "TBD") ])
+    resp[PRI] = prid
+    CREATING_PRI = prid
+
     if "Peers" in p:
+        log.info(f"Peers was in p: {p['Peers']}")
         for peer_req in p['Peers']:
-            log.info(f"try adding peering: peer_req:{peer_req}")
-            container_req = {
-                "atlasCidrBlock" : peer_req.get("routeTableCidrBlock","10.0.0.0/16"),
-                "providerName" : "AWS",
-                "regionName" : peer_req.get("regionName").upper().replace("-", "_")
-            }
-            log.info(f"try create container container_req:{container_req}")
-            container_resp = _api(evt, f"{MDBg}/{pid}/containers",m="POST",d=container_req)
-            log.info(f"created container: container_resp:{container_resp}")
+            # seems first we need see if there is already an AWS
+            # "container" whatever this is?
+            existing_containers = _api(evt, f"{MDBg}/{pid}/containers?providerName=AWS")
+            if existing_containers['totalCount'] >= 1:  # we have one
+                container = extisting_containers['results'][0]
+                log.info(f"loaded existing container:{container}")
+            else:
+                log.info("No existing containers, try create one")
+                atlasCidrBlock = peer_req.get("routeTableCidrBlock","10.0.0.0/16")
+                regionName = peer_req.get("regionName").upper().replace("-", "_")
+                container_req = { "atlasCidrBlock" : atlasCidrBlock,
+                                  "providerName" : "AWS",
+                                  "regionName" : regionName }
+                log.info(f"try create container container_req:{container_req}")
+                container = _api(evt, f"{MDBg}/{pid}/containers",m="POST",d=container_req)
+                log.info(f"created container: container:{container}")
             log.warn(f"Need to use this atlasCidrBlock to complete the peering request in the route table.")
             peering_req = {
                 "accepterRegionName" : peer_req["accepterRegionName"],
                 "awsAccountId" : peer_req["awsAccountId"],
-                "containerId" : container_resp["id"],
+                "containerId" : container["id"],
                 "providerName" : "AWS",
                 "routeTableCidrBlock" : peer_req["routeTableCidrBlock"],
                 "vpcId" : peer_req["vcpId"],
             }
             log.info(f"try create peering peering_req:{peering_req}")
-            peering_resp = _api(evt, f"{MDBg}/{pid}/peers",m="POST",d=container_req)
-            log.info(f"created peering: peering_resp:{container_resp}")
-            prid["container"]=container_resp['id']
-            prid["peer"]=peering_resp['id']
-            resp[PRI] = str(prid)
+            peering_resp = _api(evt, f"{MDBg}/{pid}/peers",m="POST",d=peering_req)
+            log.info(f"created peering: peering_resp:{peering_resp}")
+            prid = make_PRI([ ("project",pid), ("peer", peering_resp['id']) ])
+            resp[PRI] = prid
             log.info(f"prid:{prid}")
-    return {RESP_DATA: resp, PRI: str(prid)}
+    return {RESP_DATA: resp, PRI: prid}
 
 
 
