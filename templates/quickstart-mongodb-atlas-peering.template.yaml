@@ -255,7 +255,7 @@ Resources:
           instanceSizeName: !Ref "ClusterInstanceSize" 
           regionName: !Ref "ClusterRegion"
   AtlasPeer:  
-    Type: Custom::AtlasPeers
+    Type: Custom::AtlasPeer
     DependsOn: AtlasCluster
     Properties:
       # TODO: We should be able to change the Type to "MongoDB::Atlas::Deployment"
@@ -281,11 +281,10 @@ Resources:
         - "EnableSecretForApiKeyCondition"
         - !Ref "OrgId"
         - "NOT_SET"
-      Peers:
-      - regionName: !Ref "ClusterRegion"
+      Peer:
+        regionName: !Ref "ClusterRegion"
         accepterRegionName: !Ref "ClusterRegion"
         awsAccountId: !Sub "${AWS::AccountId}" 
-        containerId: "{CONTAINER-ID}"
         routeTableCidrBlock: "10.0.0.0/21"
         vpcId: !Ref "VPC"
 Outputs:

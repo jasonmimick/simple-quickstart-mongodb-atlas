@@ -76,7 +76,7 @@ def __api(pub, pvt, ep, m="GET", d={}, eatable=False):
     """ Internal - wraps all api access
     """
     if m == "GET":
-        r = requests.get(ep, auth=HTTPDigestAuth(pub, pvt))
+        r = requests.get(ep, auth=HTTPDigestAuth(pub, pvt), params=d)
     elif m == "DELETE":
         r = requests.delete(ep, auth=HTTPDigestAuth(pub, pvt))
     elif m == "POST":
@@ -183,15 +183,15 @@ def create(evt):
     resource_type = evt["ResourceType"]
     log.info(f"create:resource_type:{resource_type}")
     if validate_resource_type(resource_type,"Deployment"):
-        return handle_deployment(evt)
+        return handle_deployment_create(evt)
     elif validate_resource_type(resource_type,"Cluster"):
-        return handle_cluster(evt)
-    elif validate_resource_type(resource_type,"Peers"):
-        return handle_peers(evt)
+        return handle_cluster_create(evt)
+    elif validate_resource_type(resource_type,"Peer"):
+        return handle_peer_create(evt)
 
     # what to do else?
 
-def handle_deployment(evt):
+def handle_deployment_create(evt):
     p = evt[RP]
     prj = p["Project"]
     if "OrgId" in evt[RP]:
@@ -235,24 +235,22 @@ def handle_deployment(evt):
     return {RESP_DATA: resp, PRI: prid}
 
 
-def handle_cluster(evt):
+def handle_cluster_create(evt):
 
     p = evt[RP]
 
     # Lookup project reference
     prj = p["Project"]
-    if "OrgId" in evt[RP]:
-        # This allows add OrgId from DEPLOY_KEY injected into evt
-        org_id = evt[RP]["OrgId"]
-        log.info(f"Found org_id:{org_id} in event, setting project orgId")
-        prj["orgId"] = org_id
 
     log.info(f"handle_cluster input from template prj:{prj}")
     try_id = prj.get("id","NOT-FOUND")
-    if try_id == "NOT-FOUND":
-        raise Execption("Did not find project id in input parameters")
+
     pid = parse_id_from_physical_resource_id(try_id,"project")
     log.info(f"lookedup AWS org:project to get pid:{pid}")
+    if pid == "NOT-FOUND":
+        raise Exception("Did not find project id in input parameters")
+
+
     prj["id"]=pid
     pR = _api(evt, f"{MDBg}/{pid}")
     resp = {}
@@ -310,72 +308,71 @@ def wait_for_cluster_delete(evt, pid, m=1):
 
 def handle_peers_update(evt):
     log.info("handle_peers_update ---")
-    return handle_peers(evt)
+    return handle_peer_create(evt)
 
-def handle_peers(evt):
+def handle_peer_create(evt):
 
 
     p = evt[RP]
 
     # Lookup project reference
     prj = p["Project"]
-    if "OrgId" in evt[RP]:
-        # This allows add OrgId from DEPLOY_KEY injected into evt
-        org_id = evt[RP]["OrgId"]
-        log.info(f"Found org_id:{org_id} in event, setting project orgId")
-        prj["orgId"] = org_id
 
     log.info(f"handle_cluster input from template prj:{prj}")
     try_id = prj.get("id","NOT-FOUND")
-    if try_id == "NOT-FOUND":
-        raise Execption("Did not find project id in input parameters")
     pid = parse_id_from_physical_resource_id(try_id,"project")
     log.info(f"lookedup AWS org:project to get pid:{pid}")
+    if pid == "NOT-FOUND":
+        raise Exception("Did not find project id in input parameters")
     prj["id"]=pid
     pR = _api(evt, f"{MDBg}/{pid}")
     resp = {}
     pid = pR["id"]
+
+    if "Peer" not in p:
+        log.info(f"Peer was NOT in p: {p}")
+        raise Exception("Did not find 'Peer'")
+
 
     # Note - seeding the pysical resource id with peer "tbd"
     prid = make_PRI([ ("project",pid), ("peer", "TBD") ])
     resp[PRI] = prid
     CREATING_PRI = prid
 
-    if "Peers" in p:
-        log.info(f"Peers was in p: {p['Peers']}")
-        for peer_req in p['Peers']:
-            # seems first we need see if there is already an AWS
-            # "container" whatever this is?
-            existing_containers = _api(evt, f"{MDBg}/{pid}/containers?providerName=AWS")
-            if existing_containers['totalCount'] >= 1:  # we have one
-                container = extisting_containers['results'][0]
-                log.info(f"loaded existing container:{container}")
-            else:
-                log.info("No existing containers, try create one")
-                atlasCidrBlock = peer_req.get("routeTableCidrBlock","10.0.0.0/16")
-                regionName = peer_req.get("regionName").upper().replace("-", "_")
-                container_req = { "atlasCidrBlock" : atlasCidrBlock,
-                                  "providerName" : "AWS",
-                                  "regionName" : regionName }
-                log.info(f"try create container container_req:{container_req}")
-                container = _api(evt, f"{MDBg}/{pid}/containers",m="POST",d=container_req)
-                log.info(f"created container: container:{container}")
-            log.warn(f"Need to use this atlasCidrBlock to complete the peering request in the route table.")
-            peering_req = {
-                "accepterRegionName" : peer_req["accepterRegionName"],
-                "awsAccountId" : peer_req["awsAccountId"],
-                "containerId" : container["id"],
-                "providerName" : "AWS",
-                "routeTableCidrBlock" : peer_req["routeTableCidrBlock"],
-                "vpcId" : peer_req["vcpId"],
-            }
-            log.info(f"try create peering peering_req:{peering_req}")
-            peering_resp = _api(evt, f"{MDBg}/{pid}/peers",m="POST",d=peering_req)
-            log.info(f"created peering: peering_resp:{peering_resp}")
-            prid = make_PRI([ ("project",pid), ("peer", peering_resp['id']) ])
-            resp[PRI] = prid
-            log.info(f"prid:{prid}")
-    return {RESP_DATA: resp, PRI: prid}
+    peer_req = p['Peer']
+    # seems first we need see if there is already an AWS
+    # "container" whatever this is?
+    existing_containers = _api(evt, f"{MDBg}/{pid}/containers",d={"providerName": "AWS"})
+    log.debug(f"existing_containers:{existing_containers}")
+    if existing_containers['totalCount'] >= 1:  # we have one
+        container = existing_containers['results'][0]
+        log.info(f"loaded existing container:{container}")
+    else:
+        log.info("No existing containers, try create one")
+        atlasCidrBlock = peer_req.get("routeTableCidrBlock","10.0.0.0/16")
+        regionName = peer_req.get("regionName").upper().replace("-", "_")
+        container_req = { "atlasCidrBlock" : atlasCidrBlock,
+                          "providerName" : "AWS",
+                          "regionName" : regionName }
+        log.info(f"try create container container_req:{container_req}")
+        container = _api(evt, f"{MDBg}/{pid}/containers",m="POST",d=container_req)
+        log.info(f"created container: container:{container}")
+    log.warn(f"Need to use this atlasCidrBlock to complete the peering request in the route table.")
+    peering_req = {
+        "accepterRegionName" : peer_req["accepterRegionName"],
+        "awsAccountId" : peer_req["awsAccountId"],
+        "containerId" : container["id"],
+        "providerName" : "AWS",
+        "routeTableCidrBlock" : peer_req["routeTableCidrBlock"],
+        "vpcId" : peer_req["vcpId"],
+    }
+    log.info(f"try create peering peering_req:{peering_req}")
+    peering_resp = _api(evt, f"{MDBg}/{pid}/peers",m="POST",d=peering_req)
+    log.info(f"created peering: peering_resp:{peering_resp}")
+    prid = make_PRI([ ("project",pid), ("peer", peering_resp['id']) ])
+    resp[PRI] = prid
+    log.info(f"prid:{prid}")
+    return {resp_data: resp, pri: prid}
 
 
 
@@ -391,7 +388,7 @@ def update(evt):
     resource_type = evt["ResourceType"]
     log.info(f"create:resource_type:{resource_type}")
 
-    if validate_resource_type(resource_type,"Peers"):
+    if validate_resource_type(resource_type,"Peer"):
       return handle_peers_update(evt)
 
     if int(prj["clusterCount"]) > 0:
@@ -406,8 +403,22 @@ def update(evt):
         )
     return r
 
-
 def delete(evt):
+    """ Delete a new Atlas deployment
+    """
+    log.info(f"delete:evt:{evt}")
+    resource_type = evt["ResourceType"]
+    log.info(f"delete:resource_type:{resource_type}")
+    if validate_resource_type(resource_type,"Deployment"):
+        return handle_deployment_delete(evt)
+    elif validate_resource_type(resource_type,"Cluster"):
+        return handle_cluster_delete(evt)
+    elif validate_resource_type(resource_type,"Peer"):
+        return handle_peer_delete(evt)
+
+    # what to do else?
+
+def handle_deployment_delete(evt):
     """ Deal with deletes.
     This works well, it will first try delete the cluster and wait
     to clean up the project. It tries to lookup byName and also returns
@@ -415,9 +426,10 @@ def delete(evt):
     on the MongoDB-side to clean up, so clean up the cfn side of house.
     """
     name = evt[RP]["Name"]
-    potential_pid = _p(evt)
-    if "LATEST" in potential_pid:
-        log.info(f"Broken deployment invalid id format: {potential_pid}. Cleaning up")
+
+    try_id = evt[PRI]
+    if "LATEST" in try_id:
+        log.info(f"Broken deployment invalid id format: {try_id}. Cleaning up")
         # Note - we just return without error here, this will
         # "clean up" the cfn resource on the AWS-side
         # we don't have anything to clean up on the MongoDB side
@@ -425,26 +437,9 @@ def delete(evt):
             RESP_DATA: {"Message": "Cleaning up invalid id resource"},
             PRI: evt[PRI],
         }
-    prj = _api(evt, f"{MDBg}/{_p(evt)}", eatable=True)
-    log.info(f"delete prj:{prj}")
-    if prj.get("Code") == "STOP":
-        log.info(f"prj was STOP ------->>>> returning OK here, should be doing")
-        return {RESP_DATA: prj, PRI: evt[PRI]}
 
-    if "id" not in prj:
-        raise Exception(f"No id in prj, this should not ever happen {prj}")
-    pid = prj["id"]
-    if int(prj["clusterCount"]) > 0:
-        cd = _api(evt, f"{MDBg}/{pid}/clusters/{name}", m="DELETE", eatable=True)
-        log.info(f"cluster delete response cd:{cd}")
-        # This means that we really did just delete the cluster and should sleep
-        # a bit before the api call to delete the group. We might have gotten an "ok"
-        # error trying to delete the cluster because it's already been deleted
-        try:
-            log.warning("deleted cluster - need to wait before cleanup project....")
-            wait_for_cluster_delete(evt, pid, 1)
-        except Exception as e:
-            log.warning(f"exp sleeping:{e}")
+    pid = parse_id_from_physical_resource_id(try_id,"project")
+    log.info(f"lookedup AWS org:project to get pid:{pid}")
     try:
         r = _api(evt, f"{MDBg}/{pid}", m="DELETE", eatable=True)
         log.info(f"DELETE project r:{r}")
@@ -452,6 +447,66 @@ def delete(evt):
     except Exception as e:
         log.warning(f"ERROR: {e}")
         return {RESP_DATA: {"Error": str(e), PRI: evt[PRI]}}
+
+def handle_cluster_delete(evt):
+    """ Deal with cluster deletes.
+    This works well, it will first try delete the cluster and wait
+    to clean up the project. It tries to lookup byName and also returns
+    SUCCESS when a "bad" ID comes in, probably broker deployment and nothing
+    on the MongoDB-side to clean up, so clean up the cfn side of house.
+    """
+
+    try_id = evt[PRI]
+    if "LATEST" in try_id:
+        log.info(f"Broken deployment invalid id format: {try_id}. Cleaning up")
+        # Note - we just return without error here, this will
+        # "clean up" the cfn resource on the AWS-side
+        # we don't have anything to clean up on the MongoDB side
+        return {
+            RESP_DATA: {"Message": "Cleaning up invalid id resource"},
+            PRI: evt[PRI],
+        }
+
+    pid = parse_id_from_physical_resource_id(try_id,"project")
+    log.info(f"lookedup AWS org:project to get pid:{pid}")
+
+
+    prj = _api(evt, f"{MDBg}/{pid}", eatable=True)
+    log.info(f"delete prj:{prj}")
+    pid = prj["id"]
+    if int(prj["clusterCount"]) > 0:
+        name = evt[RP]["Name"]
+        cd = _api(evt, f"{MDBg}/{pid}/clusters/{name}", m="DELETE", eatable=True)
+        log.info(f"cluster delete response cd:{cd}")
+        return {RESP_DATA: cd, PRI: evt[PRI]}
+    else:
+        log.info(f"DELETE Cluster but clusterCount={prj['clusterCount']} was not > 0")
+        return {RESP_DATA: {}, PRI: evt[PRI]}
+
+
+def handle_peer_delete(evt):
+    """ Deal with Peer deletes.
+    """
+    try_id = evt[PRI]
+    if "LATEST" in try_id:
+        log.info(f"Broken deployment invalid id format: {try_id}. Cleaning up")
+        # Note - we just return without error here, this will
+        # "clean up" the cfn resource on the AWS-side
+        # we don't have anything to clean up on the MongoDB side
+        return {
+            RESP_DATA: {"Message": "Cleaning up invalid id resource"},
+            PRI: evt[PRI],
+        }
+
+    pid = parse_id_from_physical_resource_id(try_id,"project")
+    log.info(f"lookedup AWS org:project to get pid:{pid}")
+
+    peer_id = parse_id_from_physical_resource_id(try_id,"peer")
+    log.info(f"delete peer - peer_id:{peer_id}")
+
+    cd = _api(evt, f"{MDBg}/{pid}/peers/{peer_id}", m="DELETE", eatable=True)
+    log.info(f"peer delete response cd:{cd}")
+    return {RESP_DATA: cd, PRI: evt[PRI]}
 
 
 fns = {"Create": create, "Update": update, "Delete": delete}
